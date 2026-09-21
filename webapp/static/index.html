@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Professional paper-trading monitoring, performance and risk dashboard">
+  <title>Orbit · Trading Operations</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/terminal.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Μετάβαση στο περιεχόμενο</a>
+  <div class="auth-screen" id="auth-screen" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <form class="auth-card" id="login-form">
+      <span class="auth-mark">ORBIT / PAPER OPERATIONS</span>
+      <h1 id="auth-title">Your trading<br>workspace.</h1>
+      <p>Sign in to monitor the paper account and control new strategy entries.</p>
+      <label for="login-password">Dashboard password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required minlength="12" placeholder="Enter your password">
+      <button type="submit" id="login-button">Unlock dashboard</button>
+      <small id="login-error" role="alert" aria-live="polite"></small>
+      <span class="auth-foot">Local paper-trading workspace · No live-money controls</span>
+    </form>
+  </div>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Κύρια πλοήγηση">
+      <a class="brand" href="#overview" aria-label="Orbit αρχική">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-copy"><strong>ORBIT<span class="brand-version"> / 01</span></strong><small>EXECUTION WORKSPACE</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav-list">
+        <a class="nav-item active" href="#overview" data-section="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v10h-6zM4 14h6v6H4zM14 18h6v2h-6z"/></svg><span>Overview</span></a>
+        <a class="nav-item" href="#performance" data-section="performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l5-5 4 3 7-9M16 6h4v4"/></svg><span>Performance</span></a>
+        <a class="nav-item" href="#activity" data-section="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M11 16v4"/></svg><span>Trades & Positions</span></a>
+        <a class="nav-item" href="#risk" data-section="risk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v5c0 4.7-3.3 7.8-8 9-4.7-1.2-8-4.3-8-9V7l8-4zM9 12l2 2 4-5"/></svg><span>Risk Controls</span></a>
+      </nav>
+      <div class="sidebar-terminal">
+        <div class="terminal-head"><span>RUNTIME</span><span class="pulse-dot" id="sidebar-status-dot"></span></div>
+        <strong id="sidebar-status">Checking system</strong>
+        <small id="sidebar-heartbeat">Waiting for heartbeat…</small>
+        <div class="paper-chip">PAPER TRADING</div>
+      </div>
+      <p class="sidebar-note">Paper account monitoring<br>New-entry control only</p>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menu-button" aria-label="Άνοιγμα πλοήγησης" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="top-title"><span class="breadcrumb">ORBIT TERMINAL <b>/</b> PAPER PORTFOLIO</span><h1>Portfolio workspace<span class="terminal-tag">PAPER</span></h1></div>
+        <div class="topbar-actions">
+          <div class="market-clock"><span>UTC</span><strong id="utc-clock">--:--:--</strong></div>
+          <button class="icon-button" id="theme-button" aria-label="Εναλλαγή θέματος"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
+          <button class="refresh-button" id="refresh-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg><span>Refresh data</span></button>
+          <button class="session-button" id="logout-button" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section id="overview" class="page-section overview-section" aria-labelledby="overview-title">
+          <div class="section-header">
+            <div><span class="section-kicker">01 / ACCOUNT & STRATEGY</span><h2 id="overview-title">The portfolio, in focus.</h2></div>
+            <div class="updated-line"><span class="status-orb" id="header-status-orb"></span><strong id="header-status">Connecting</strong><small>Updated <time id="last-updated">—</time></small></div>
+          </div>
+          <div class="metric-strip">
+            <article class="metric-card hero-metric"><div class="metric-label"><span>Total return</span><span class="metric-glyph positive">↗</span></div><strong id="metric-return">—</strong><small id="backtest-range">Awaiting backtest history</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Trade win rate</span><span class="verified-dot"></span></div><strong id="metric-win-rate">—</strong><small id="win-rate-source">Requires completed trades</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Max drawdown</span><span class="metric-glyph negative">↓</span></div><strong id="metric-drawdown">—</strong><small>Worst peak-to-trough decline</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Profit factor</span><span class="metric-glyph violet">PF</span></div><strong id="metric-profit-factor">—</strong><small>Gross profit / gross loss</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Paper equity</span><span class="metric-glyph blue">$</span></div><strong id="metric-growth">—</strong><small id="equity-daily-pnl">Awaiting account state</small></article>
+          </div>
+
+          <div class="overview-workspace">
+          <article class="panel operator-panel" aria-labelledby="operator-title">
+            <div><span class="panel-eyebrow">OPERATOR CONTROL · PAPER ONLY</span><h3 id="operator-title">New strategy entries</h3>
+              <p id="control-message">Checking entry policy…</p><small id="control-updated">Last change: —</small>
+            </div>
+            <div class="operator-actions"><strong class="control-indicator" id="control-indicator">CHECKING</strong>
+              <button class="control-button pause" id="pause-button" type="button" disabled>Pause entries</button>
+              <button class="control-button resume" id="resume-button" type="button" disabled>Allow entries</button>
+            </div>
+            <div class="execution-note"><span>EXECUTION BOUNDARY</span><p>Paper account only. Entry policy does not stop the engine or liquidate existing positions.</p></div>
+          </article>
+
+          <article class="panel paper-chart-panel" aria-labelledby="paper-chart-title">
+            <div class="panel-header"><div><span class="panel-eyebrow">BROKER-REPORTED PAPER ACCOUNT</span><h3 id="paper-chart-title">Equity over time</h3><p>Account snapshots, separate from strategy backtests; deposits and withdrawals are not adjusted.</p></div><span class="period-note" id="paper-points">No snapshots</span></div>
+            <div class="chart-stage medium"><canvas id="paper-chart" aria-label="Paper account equity over time"></canvas><div class="chart-empty visible" id="paper-chart-empty"><span>◇</span><strong>No paper account history</strong><small>Start the paper trader to record broker-reported equity snapshots.</small></div></div>
+          </article>
+
+          </div>
+          <div class="command-grid">
+            <article class="panel chart-panel">
+              <div class="panel-header chart-header">
+                <div><span class="panel-eyebrow">PERFORMANCE PATH</span><h3>Strategy equity</h3><p>Normalized growth compared with the underlying market</p></div>
+                <div class="chart-controls" aria-label="Επιλογές γραφήματος">
+                  <div class="segmented" id="chart-mode"><button class="active" data-chart-mode="equity">Growth</button><button data-chart-mode="drawdown">Drawdown</button></div>
+                  <div class="segmented compact" id="range-filter"><button data-range="30">1M</button><button data-range="90">3M</button><button data-range="365">1Y</button><button class="active" data-range="all">ALL</button></div>
+                </div>
+              </div>
+              <div class="chart-stage large"><canvas id="equity-chart"></canvas><div class="chart-empty" id="equity-empty"><span>⌁</span><strong>No performance history yet</strong><small>Run a backtest to generate the strategy path.</small></div></div>
+              <div class="chart-footer"><span><i class="legend-line strategy"></i>Strategy</span><span id="benchmark-legend"><i class="legend-line benchmark"></i>Market benchmark</span><small id="chart-points">0 observations</small></div>
+            </article>
+
+            <aside class="insight-stack">
+              <article class="panel win-panel">
+                <div class="panel-header"><div><span class="panel-eyebrow">TRADE QUALITY</span><h3>Win / loss profile</h3></div><span class="source-badge" id="trade-source-badge">NO DATA</span></div>
+                <div class="win-gauge-wrap">
+                  <svg class="win-gauge" viewBox="0 0 120 120" role="img" aria-label="Ποσοστό κερδισμένων trades"><defs><linearGradient id="gauge-gradient"><stop offset="0" stop-color="#29e7c2"/><stop offset="1" stop-color="#46a6ff"/></linearGradient></defs><circle class="gauge-track" cx="60" cy="60" r="46"/><circle class="gauge-value" id="win-gauge" cx="60" cy="60" r="46"/></svg>
+                  <div class="gauge-copy"><strong id="gauge-win-rate">—</strong><span>WIN RATE</span></div>
+                </div>
+                <div class="trade-score-grid"><div><span class="score-dot win"></span><strong id="trade-wins">0</strong><small>Wins</small></div><div><span class="score-dot loss"></span><strong id="trade-losses">0</strong><small>Losses</small></div><div><span class="score-dot flat"></span><strong id="trade-flat">0</strong><small>Flat</small></div></div>
+                <div class="streak-line"><span>Current streak</span><strong id="trade-streak">—</strong></div>
+              </article>
+              <article class="panel runtime-panel">
+                <div class="panel-header"><div><span class="panel-eyebrow">SYSTEM HEALTH</span><h3>Bot runtime</h3></div><span class="runtime-badge" id="runtime-badge">CHECKING</span></div>
+                <div class="runtime-list"><div><span>Engine heartbeat</span><strong id="runtime-heartbeat">Not received</strong></div><div><span>Open positions</span><strong id="metric-positions">0 / —</strong></div><div><span>Pending orders</span><strong id="pending-orders">0</strong></div><div><span>Available cash</span><strong id="account-cash">—</strong></div><div><span>Orders today</span><strong id="daily-orders">0 / —</strong></div><div><span>Execution mode</span><strong class="paper-text">Paper</strong></div></div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section id="performance" class="page-section" aria-labelledby="performance-title">
+          <div class="section-header"><div><span class="section-kicker">DEEP ANALYTICS</span><h2 id="performance-title">Performance diagnostics</h2></div><span class="read-only-chip">RESEARCH DATA</span></div>
+          <div class="performance-grid">
+            <article class="panel monthly-panel"><div class="panel-header"><div><span class="panel-eyebrow">RETURN CONSISTENCY</span><h3>Monthly performance</h3><p>Compounded strategy return by month</p></div></div><div class="month-grid" id="monthly-grid"><div class="empty-inline">No monthly history available.</div></div></article>
+            <article class="panel validation-panel">
+              <div class="panel-header"><div><span class="panel-eyebrow">OUT-OF-SAMPLE</span><h3>Validation scorecard</h3><p>Walk-forward performance only</p></div><span class="source-badge violet">WALK-FORWARD</span></div>
+              <div class="validation-hero"><strong id="wf-sharpe">—</strong><span>AVG SHARPE</span></div>
+              <div class="validation-stats"><div><span>Positive-bar rate</span><strong id="wf-win-rate">—</strong></div><div><span>Average CAGR</span><strong id="wf-cagr">—</strong></div><div><span>Average drawdown</span><strong id="wf-drawdown">—</strong></div><div><span>Test periods</span><strong id="wf-periods">—</strong></div></div>
+              <small class="metric-note">Positive-bar rate is not presented as trade win rate.</small>
+            </article>
+          </div>
+          <article class="panel wf-chart-panel"><div class="panel-header"><div><span class="panel-eyebrow">VALIDATION STABILITY</span><h3>Sharpe by test window</h3><p>Risk-adjusted results across independent periods</p></div><span class="period-note" id="positive-periods">No validation periods</span></div><div class="chart-stage medium"><canvas id="walkforward-chart"></canvas><div class="chart-empty" id="walkforward-empty"><span>⌁</span><strong>No walk-forward history</strong><small>Run validation to compare independent test windows.</small></div></div></article>
+        </section>
+
+        <section id="activity" class="page-section" aria-labelledby="activity-title">
+          <div class="section-header"><div><span class="section-kicker">PAPER ACTIVITY</span><h2 id="activity-title">Positions & execution journal</h2></div><span class="read-only-chip">BROKER SNAPSHOTS · NOT NET RETURNS</span></div>
+          <div class="activity-grid">
+            <article class="panel positions-panel"><div class="panel-header"><div><span class="panel-eyebrow">CURRENT EXPOSURE</span><h3>Open positions</h3></div><span class="counter" id="position-count">0</span></div><div id="positions-list" class="empty-state"><span class="empty-icon">◇</span><strong>Portfolio is flat</strong><small>Confirmed entries will appear here automatically.</small></div></article>
+            <article class="panel trades-panel"><div class="panel-header"><div><span class="panel-eyebrow">RECENT EVENTS · NOT FILLS</span><h3>Submitted orders</h3></div><span class="counter" id="trade-count">0</span></div><div class="table-scroll"><table><thead><tr><th>Timestamp</th><th>Side</th><th>Symbol</th><th>Signal price</th><th>Quantity</th><th>Source / Reason</th></tr></thead><tbody id="trades-body"><tr><td colspan="6" class="empty-cell">No order submissions recorded.</td></tr></tbody></table></div></article>
+          </div>
+          <article class="panel trades-panel">
+            <div class="panel-header"><div><span class="panel-eyebrow">DURABLE EXECUTION LEDGER</span><h3>Order & fill reconciliation</h3></div><span class="runtime-badge" id="execution-status">NOT INITIALIZED</span></div>
+            <p class="chart-note" id="execution-summary">No execution ledger is available yet. New entries remain locked.</p>
+            <p class="chart-note" id="execution-external">External account positions are not managed by this bot.</p>
+            <p class="chart-note" id="crypto-exit-status">Crypto exit supervisor: disabled / not initialized.</p>
+            <div class="table-scroll"><table><thead><tr><th>Symbol</th><th>Side</th><th>Broker status</th><th>Requested</th><th>Filled</th><th>Avg fill</th><th>Ownership</th></tr></thead><tbody id="execution-body"><tr><td colspan="7" class="empty-cell">No ledger orders.</td></tr></tbody></table></div>
+          </article>
+        </section>
+
+        <section id="risk" class="page-section" aria-labelledby="risk-title">
+          <div class="section-header"><div><span class="section-kicker">GUARDRAILS</span><h2 id="risk-title">Risk & runtime policy</h2></div><span class="read-only-chip">READ ONLY</span></div>
+          <div class="config-grid" id="config-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+        </section>
+      </main>
+      <footer><span><b>ORBIT</b> · Micro Trading Bot</span><span>Paper-trading research environment · Not financial advice</span></footer>
+    </div>
+  </div>
+  <div class="mobile-overlay" id="mobile-overlay"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

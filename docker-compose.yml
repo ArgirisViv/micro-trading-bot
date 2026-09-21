@@ -1,0 +1,66 @@
+services:
+  dashboard:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.local
+    environment:
+      STATE_FILE: /app/runtime/state.json
+      DASHBOARD_TRADE_LOG_CSV: /app/runtime/trade_log.csv
+      DASHBOARD_PAPER_EQUITY_CSV: /app/runtime/paper_equity.csv
+      CONTROL_FILE: /app/runtime/control.json
+      EXECUTION_DB: /app/runtime/execution.sqlite3
+      APCA_RETRY_MAX: "0"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - runtime:/app/runtime
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  paper-trader:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.local
+    environment:
+      STATE_FILE: /app/runtime/state.json
+      TRADE_LOG_FILE: /app/runtime/trade_log.csv
+      PAPER_EQUITY_CSV: /app/runtime/paper_equity.csv
+      LOOP_LOG_FILE: /app/runtime/multi_asset_loop.log
+      CONTROL_FILE: /app/runtime/control.json
+      EXECUTION_DB: /app/runtime/execution.sqlite3
+      APCA_RETRY_MAX: "0"
+    command: ["python", "-m", "scripts.paper_trading.multi_asset_loop"]
+    volumes:
+      - runtime:/app/runtime
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.check_trader_health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+  crypto-exit-supervisor:
+    profiles: ["crypto-exits"]
+    build: .
+    restart: "no"
+    init: true
+    env_file: [.env.local]
+    environment:
+      STATE_FILE: /app/runtime/state.json
+      EXECUTION_DB: /app/runtime/execution.sqlite3
+      APCA_RETRY_MAX: "0"
+      ENABLE_CRYPTO_EXIT_SUPERVISOR: "false"
+    command: ["python", "-m", "scripts.paper_trading.crypto_exit_loop"]
+    volumes: ["runtime:/app/runtime"]
+    healthcheck:
+      disable: true
+
+volumes:
+  runtime:
