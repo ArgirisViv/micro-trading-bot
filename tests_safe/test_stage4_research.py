@@ -29,7 +29,7 @@ def test_future_changes_do_not_change_completed_folds():
     assert first['folds'][0] == second['folds'][0]
     assert first['evaluated_rows'] == 200
     assert first['trailing_unevaluated_rows'] == 10
-    assert first['folds'][0]['test_end'] < first['folds'][1]['test_start']
+    assert str(first['folds'][0]['test_end']) < str(first['folds'][1]['test_start'])
 
 
 def test_prior_warmup_signal_fills_first_test_open():
@@ -45,14 +45,14 @@ def test_buy_hold_costs_cash_and_open_lot():
     data.loc[:,['open','high','low','close']] = 100
     assert buy_hold(data, BacktestPolicy(fee_bps=0,slippage_bps=0))['total_return'] == 0
     result = buy_hold(data, BacktestPolicy())
-    assert result['total_return'] < 0
+    assert float(result['total_return']) < 0
     assert result['completed_trades'] == 0
 
 
 @pytest.mark.parametrize('damage', ['naive','reverse','duplicate','future','ohlc'])
 def test_csv_rejects_ambiguous_or_bad_data(tmp_path,damage):
     data = bars(3)
-    if damage == 'naive': data.index = data.index.tz_localize(None)
+    if damage == 'naive': data.index = pd.DatetimeIndex(data.index).tz_localize(None)
     if damage == 'reverse': data = data.iloc[::-1]
     if damage == 'duplicate': data.index = pd.DatetimeIndex([data.index[0]]*3)
     if damage == 'future': data.index = pd.date_range('2099-01-01',periods=3,freq='5min',tz='UTC')

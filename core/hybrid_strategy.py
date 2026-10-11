@@ -52,19 +52,19 @@ class HybridStrategy:
         from .enhanced_strategy import apply_enhanced_strategy
         from .enhanced_fundamentals import analyze_business_quality
         from .portfolio_allocator import calculate_optimal_allocation
-        from .market_regime import detect_market_regime
+        from .market_regime import MarketRegimeDetector
         from .macro_factors import analyze_macro_factors
         
         self.apply_enhanced_strategy = apply_enhanced_strategy
         self.analyze_business_quality = analyze_business_quality
         self.calculate_optimal_allocation = calculate_optimal_allocation
-        self.detect_market_regime = detect_market_regime
+        self.regime_detector = MarketRegimeDetector()
         self.analyze_macro_factors = analyze_macro_factors
     
     def generate_hybrid_signals(self, 
                                symbols: List[str],
                                market_data: Dict[str, pd.DataFrame],
-                               portfolio_state: PortfolioState = None) -> List[HybridSignal]:
+                               portfolio_state: PortfolioState | None = None) -> List[HybridSignal]:
         """
         Generate hybrid trading signals for all symbols
         """
@@ -99,14 +99,14 @@ class HybridStrategy:
                 df = market_data[first_symbol]
                 
                 # Detect market regime
-                market_regime = self.detect_market_regime(df)
+                regime_summary = self.regime_detector.get_regime_summary(df)
                 
                 # Analyze macro factors
                 macro_env = self.analyze_macro_factors(first_symbol)
                 
                 return {
-                    'market_regime': market_regime.regime_type,
-                    'regime_confidence': market_regime.confidence,
+                    'market_regime': regime_summary.get('overall_regime', 'UNKNOWN'),
+                    'regime_confidence': regime_summary.get('confidence', 0.5),
                     'macro_environment': macro_env.economic_cycle,
                     'macro_confidence': macro_env.confidence_score
                 }
@@ -128,7 +128,7 @@ class HybridStrategy:
             }
     
     def _calculate_dynamic_allocation(self, market_conditions: Dict[str, Any], 
-                                    portfolio_state: PortfolioState = None) -> Dict[str, float]:
+                                    portfolio_state: PortfolioState | None = None) -> Dict[str, Any]:
         """Calculate dynamic allocation between strategies"""
         try:
             # Get current performance (placeholder - in real implementation would be actual data)
@@ -143,10 +143,19 @@ class HybridStrategy:
                 value_performance
             )
             
+            current_allocation = portfolio_state.allocation_ratio if portfolio_state else {}
+            rebalancing_needed = allocation_result.rebalancing_needed
+            if current_allocation:
+                rebalancing_needed = any(
+                    abs(allocation_result.target_allocation.get(strategy, 0.0) -
+                        current_allocation.get(strategy, 0.0)) > self.rebalancing_threshold
+                    for strategy in ('active_trading', 'value_investing')
+                )
+
             return {
                 'active_trading': allocation_result.active_trading_allocation,
                 'value_investing': allocation_result.value_investing_allocation,
-                'rebalancing_needed': allocation_result.rebalancing_needed,
+                'rebalancing_needed': rebalancing_needed,
                 'risk_weights': allocation_result.risk_parity_weights
             }
             
@@ -381,7 +390,7 @@ class HybridStrategy:
 
 def generate_hybrid_signals(symbols: List[str],
                           market_data: Dict[str, pd.DataFrame],
-                          portfolio_state: PortfolioState = None) -> List[HybridSignal]:
+                          portfolio_state: PortfolioState | None = None) -> List[HybridSignal]:
     """
     Convenience function to generate hybrid signals
     """

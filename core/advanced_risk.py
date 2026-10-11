@@ -9,8 +9,7 @@ Advanced Risk Management System
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Tuple, Optional, List
-from scipy import stats
+from typing import Any, Dict, List, Optional, Tuple
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -56,7 +55,7 @@ class AdvancedRiskManager:
     
     def calculate_var(self, 
                      returns: pd.Series, 
-                     confidence_level: float = None) -> Dict[str, float]:
+                     confidence_level: Optional[float] = None) -> Dict[str, float]:
         """
         Calculate Value at Risk (VaR) using historical simulation
         
@@ -152,14 +151,13 @@ class AdvancedRiskManager:
         return hhi
     
     def calculate_optimal_position_size(self,
-                                     symbol: str,
                                      current_price: float,
                                      portfolio_value: float,
                                      volatility: float,
                                      win_rate: float = 0.55,
                                      avg_win_pct: float = 0.02,
                                      avg_loss_pct: float = 0.01,
-                                     current_heat: Dict = None) -> Dict[str, float]:
+                                     current_heat: Optional[Dict[str, Any]] = None) -> Dict[str, float]:
         """
         Calculate optimal position size using multiple risk factors
         
@@ -244,7 +242,7 @@ class AdvancedRiskManager:
     def calculate_stop_loss_level(self,
                                 entry_price: float,
                                 volatility: float,
-                                atr: float = None,
+                                atr: float | None = None,
                                 risk_tolerance: float = 0.02) -> Dict[str, float]:
         """
         Calculate dynamic stop loss levels

@@ -1,93 +1,105 @@
-# Micro Trading Bot · Paper Trading
+<div align="center">
 
-> **Current checkpoint: session-aware DAY modeling.** Read
-> [session protocol and next steps](docs/STAGE7_SESSIONS_EL.md). Explicit broker
-> calendar, regular-session fills, visible DAY protection expiry, continuous
-> development-only audit and read-only calendar export. 255 offline tests.
-> No new AAPL return claim, broker activation or automated re-protection.
-> Earlier checkpoint banners below are historical. Legacy research CLI calls
-> now require `--calendar` or explicit `--legacy-all-sessions`.
+<img src="docs/logo.svg" alt="Aether AI logo" width="110" />
 
-> **Current addition: read-only historical-data exporter.** Start with
-> [download instructions](docs/DOWNLOAD_RESEARCH_DATA_EL.md). Stage-4 research
-> protocol is unchanged. No real API download, edge validation or trading activation
-> was performed while preparing this copy. Earlier banners below are historical.
+# Aether AI
 
-> **Current checkpoint: stage 4.** See [research protocol](docs/STAGE4_RESEARCH_EL.md)
-> and [monitoring-only migration](docs/MIGRATION_STAGE4_EL.md). Unified offline
-> fixed-rule evaluation with non-overlapping windows, baselines and a volume-gate
-> ablation. No ML walk-forward training, profitability proof or broker activation.
-> Checkpoint banners below are historical; stage 4 supersedes legacy backtest CLIs.
+**A risk-first paper-trading research bot for US stocks and crypto, with an authenticated real-time control center.**
 
-> **Current checkpoint: stage 3.** Read `docs/STAGE3_DATA_EXITS_EL.md` and
-> `docs/MIGRATION_STAGE3_EL.md`. Providers and an independent ledger-backed crypto
-> exit supervisor are offline-tested (194 tests), not account-integration validated.
-> Entries remain locked; crypto entries and supervisor startup remain disabled.
-> Stage-1/2 descriptions below are historical. Stock daily live bars explicitly
-> require a later session-close policy rather than silently falling back to 5min.
+[![CI](https://github.com/ArgirisViv/micro-trading-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/ArgirisViv/micro-trading-bot/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%2B-7c3aed)
+![Flask](https://img.shields.io/badge/Flask-3-7c3aed)
+![Docker](https://img.shields.io/badge/docker-compose-7c3aed)
+![Mode](https://img.shields.io/badge/mode-paper%20only-f59e0b)
+![License](https://img.shields.io/badge/license-MIT-7c3aed)
 
-> **Current checkpoint: stage 2.** Start with `docs/STAGE2_EXECUTION_EL.md` and
-> `docs/MIGRATION_STAGE2_EL.md`. Durable SQLite reconciliation is implemented and
-> offline-tested; broker integration is not verified. New entries remain locked.
-> Legacy software crypto exits were removed from the primary runtime pending stage 3.
-> Earlier stage-1 notes below are historical, not the current feature specification.
+<img src="docs/dashboard.png" alt="Aether AI dashboard" width="900" />
 
-> **Hardening stage 1 — monitoring/research checkpoint, not unattended trading.**
-> Read `docs/HARDENING_STATUS_EL.md` and `docs/MIGRATION_STAGE1_EL.md` first.
-> New entries are locked by default, including when a saved operator control says resume.
-> Crypto entries and default ML/regime overlays are disabled pending validation.
-> The supported offline backtest is `python -m scripts.backtesting.offline_backtest INPUT.csv`.
-> Older backtest scripts and experimental modules are not validated performance evidence.
+</div>
 
-A Python portfolio project for **paper trading** US stocks and crypto with an authenticated web control center branded **Orbit**. It combines technical signals with an optional locally trained ML model, sizes positions against account cash and a risk budget, and submits orders to an Alpaca **paper** account. It is a software engineering and strategy research project; it has no independently verified profitability record.
+> **Paper trading only.** This is an engineering and research project. It refuses non-paper broker endpoints, has no verified profitability record and is not financial advice. See [Status and limits](#status-and-limits).
 
-## What works
+## Highlights
 
-- Long-only entries from the multi-asset strategy; a bearish signal does not open a short position.
-- Technical signals continue to work when no trained ML artifact is present.
-- Alpaca's market clock gates stock entries; crypto can be evaluated around the clock.
-- Whole-share stock market entries with stop-loss and take-profit bracket legs; fractional crypto market orders use GTC, without broker-side bracket protection.
-- Stock exits are left to the broker's bracket legs; the software trailing/partial exit path is limited to crypto. Displayed position entry prices come from the broker's average fill price when a position is observed.
-- Cash-capped sizing using the actual fixed-stop policy, a UTC daily reset, daily drawdown halt, order cap and position cap. ATR is diagnostic, not the sizing stop.
-- A responsive Flask dashboard for account snapshots, heartbeat, submitted orders, backtest curves, walk-forward summaries and source-labeled win-rate metrics.
-- A separate time-series chart of broker-reported paper-account equity and cash snapshots. Raw account equity can change because of deposits or withdrawals, so the chart is not a verified strategy-return curve.
-- Password-protected operator access with a server-side session, CSRF protection and controls to pause/resume **new entries only**. Missing or corrupt controls default to paused. Existing positions can still be managed by the running loop.
-- A paper-endpoint guard that refuses live or lookalike broker URLs.
+- **Safety-first execution.** Alpaca paper-endpoint guard, long-only entries, cash-capped sizing from the actual fixed-stop policy, daily drawdown halt, order cap and position cap.
+- **Durable execution ledger.** SQLite-backed order records and broker reconciliation. Uncertain submissions lock further entries instead of guessing.
+- **Signals.** Technical indicators with an optional, locally trained ML overlay. Signals keep working when no model artifact is present.
+- **Market awareness.** Alpaca market-clock gating for stocks and a session-aware backtester with an explicit broker calendar, configurable fee/slippage assumptions and conservative stop-first handling.
+- **Operator control center.** Authenticated Flask dashboard with account registration, server-side sessions, CSRF protection, an animated trading-themed background and a **Start / Stop bot** control. Missing or corrupt control state fails closed to *paused*.
+- **Honest analytics.** Backtest metrics, walk-forward summaries and broker-reported paper equity are labeled by source. Order submission is never presented as a fill.
+- **Reproducible deployment.** Two-service Docker Compose stack with healthchecks, a non-root image and a persistent runtime volume.
 
-**Order submission is not a fill.** The activity log stores submitted orders with signal prices, not confirmed executions or realized P&L. The dashboard shows a paper-trade win rate only if a separately provided trade file contains genuine completed fills and P&L; otherwise it labels trade statistics as backtest-derived or unavailable. Backtests are illustrative and include no verified fee, slippage or latency model.
+## Dashboard
+
+| Area | What it shows |
+| --- | --- |
+| Overview | Total return, win rate, max drawdown, profit factor and paper equity with status pills |
+| Performance | Strategy equity vs. market benchmark, walk-forward windows, monthly returns |
+| Trades & Positions | Open positions, submitted orders and the execution ledger |
+| Risk Controls | Trading universe, risk limits, execution policy and entry control |
+
+The interface is responsive down to 320 px, respects `prefers-reduced-motion` and uses a dark violet theme with subtle interactive effects.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Data
+        P[Polygon<br/>stocks] --> L
+        C[CryptoCompare<br/>crypto] --> L
+    end
+    subgraph Trader["paper-trader container"]
+        L[Multi-asset loop] --> S[Signals<br/>technical + optional ML]
+        S --> R[Risk engine<br/>sizing, caps, drawdown halt]
+        R --> B[Alpaca paper broker]
+        L --> E[(Execution ledger<br/>SQLite)]
+    end
+    subgraph Dash["dashboard container"]
+        W[Flask API + UI] --> V[(Runtime volume)]
+    end
+    E --- V
+    L -- state, heartbeat, control --- V
+    U((Operator)) -- login, start / stop --> W
+```
+
+| Path | Purpose |
+| --- | --- |
+| `data/` | Polygon and CryptoCompare feed adapters |
+| `core/` | Strategy, indicators, risk, execution ledger and broker boundary |
+| `scripts/paper_trading/` | Multi-asset loop and crypto exit supervisor |
+| `scripts/backtesting/` | Offline and walk-forward research tooling |
+| `webapp/` | Flask API and the browser interface |
+| `tests_safe/` | Isolated offline tests, no real broker orders |
+| `docs/` | Stage-by-stage hardening notes ([index](docs/CHECKPOINTS.md)) |
 
 ## Quick start
 
 Requires Python 3.11+.
 
 ```bash
-cd micro_trading_bot
+git clone https://github.com/ArgirisViv/micro-trading-bot.git
+cd micro-trading-bot
 python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m pip install 'pytest>=7.4,<9'
-python -m pytest -q
-cp .env.example .env.local
-# Generate a password hash and session key; copy its output into .env.local:
+source .venv/bin/activate            # Windows: .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt "pytest>=7.4,<9"
+python -m pytest -q                  # offline suite
+
+cp .env.example .env.local           # Windows: Copy-Item .env.example .env.local
 python -m scripts.prepare_dashboard_auth
 python -m webapp.server
 ```
 
-On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1` and copy the example with `Copy-Item .env.example .env.local`. If Windows blocks the `pip.exe` launcher, use `& ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt` from inside `micro_trading_bot`.
+Put the generated `DASHBOARD_*` values in `.env.local`, open <http://127.0.0.1:8080> and **create an account** from the login screen. New entries start *paused*; nothing can be placed until you explicitly start the bot and the paper trader is configured.
 
-Add the two generated `DASHBOARD_*` values to `.env.local` and open <http://127.0.0.1:8080>. Without these settings the data API refuses access. Sign in with the password you chose. The first-run entry policy is **paused**; click **Allow entries** only when you are ready to let a running paper trader open new positions. The dashboard itself does not launch a process or place an order.
-
-The command below is the runtime entry point, **not a recommendation to enable trading during this hardening stage**. Keep the old trader stopped and use the monitoring-only migration guide:
+### Run the trader (paper only)
 
 ```bash
 python -m scripts.paper_trading.multi_asset_loop
 ```
 
-No paper order is sent until the broker account and market-data providers are configured and a strategy signal passes the risk checks. Start with a dedicated paper account and observe it while testing. The default stock feed uses Polygon; crypto data uses CryptoCompare. Provider symbols (`BTCUSD`) are mapped to Alpaca broker pairs (`BTC/USD`) when submitting or querying crypto orders.
+Use a dedicated Alpaca **paper** account.
 
 ## Docker
-
-Create `.env.local` with the dashboard password hash/session secret, newly issued Alpaca **paper** credentials and the market-data keys for the asset classes you enabled. With Docker Desktop running, initialize both containers **once** from the `micro_trading_bot` directory:
 
 ```bash
 python -m scripts.check_docker_config
@@ -95,31 +107,54 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-On Windows, `Start-Orbit.ps1` runs those checks and commands from the project folder. Both services use Docker's `unless-stopped` restart policy: after they have started successfully, opening Docker Desktop again restarts them without running Compose each time. If you intentionally stop a container or run `docker compose down`, start the stack again with `docker compose up -d`. Docker Desktop's **Settings → General → Start Docker Desktop when you sign in** setting is optional if you also want Docker Desktop to open at Windows sign-in.
+On Windows, `Start-Aether.ps1` runs those steps.
 
-The saved entry-control state survives restarts. Initially it is **paused**. If you previously clicked **Allow entries**, reopening Docker Desktop can allow the trader to submit new **paper** orders once its risk checks pass; click **Pause entries** before shutting Docker down if you want it to reopen idle. The `paper-trader` container's healthcheck measures loop heartbeat, not broker authorization or profitability.
+- `dashboard` serves the UI on `127.0.0.1:8080` through gunicorn (one worker, so the in-memory login limiter is not split).
+- `paper-trader` runs the strategy loop; its healthcheck measures the loop heartbeat.
+- Both share a named volume for state, the execution ledger, the control file and dashboard accounts.
+- Both use `restart: unless-stopped`.
+- Do not expose the dashboard directly to the internet; use an authenticated SSH tunnel or another protected access layer.
 
-The dashboard binds to `127.0.0.1:8080` on the host. Both containers use the same named volume for state, order-submission records and the operator control file. The dashboard exposes only pause/resume writes through the application API; there is no endpoint that places an order. The user interface requires a password. To access it remotely, use an authenticated SSH tunnel or another protected access layer; do not expose the dashboard directly to the public internet.
+## Configuration
 
-The paper trader also stores broker-reported equity snapshots in the shared volume. These appear in **Equity over time** after an account read succeeds. The chart remains empty until the paper trader runs with valid credentials and market-data configuration.
+All settings live in `.env.local` (copy of [.env.example](.env.example)):
 
-## Architecture
-
-| Area | Purpose |
+| Group | Variables |
 | --- | --- |
-| `data/` | Polygon and CryptoCompare feed adapters |
-| `core/enhanced_strategy.py` | Indicators, optional ML, composite signals |
-| `core/alpaca_trade.py` | Paper broker boundary and order validation |
-| `scripts/paper_trading/multi_asset_loop.py` | Paper strategy, state, risk limits and submissions |
-| `webapp/` | Read-only monitoring API and browser interface |
-| `scripts/backtesting/` | Research and walk-forward scripts |
-| `src/` | Experimental parallel architecture, not the primary runtime |
-| `tests_safe/` | Isolated offline tests; no real broker orders |
+| Broker | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` |
+| Market data | `POLYGON_API_KEY`, `CRYPTOCOMPARE_API_KEY` |
+| Universe | `STOCK_WATCHLIST`, `CRYPTO_WATCHLIST`, `TIMEFRAME` |
+| Risk | `RISK_PER_TRADE`, `STOP_LOSS_PCT`, `TAKE_PROFIT_PCT`, `MAX_PORTFOLIO_POSITIONS`, `MAX_DAILY_ORDERS`, `MAX_DAILY_DRAWDOWN_PCT` |
+| Dashboard | `DASHBOARD_PORT`, `DASHBOARD_SESSION_SECRET`, `DASHBOARD_PASSWORD_HASH`, `DASHBOARD_COOKIE_SECURE`, `DASHBOARD_ACCOUNTS_DB` |
+
+## Security
+
+- `.env.local`, logs, SQLite databases, trading state and model artifacts are git-ignored. **Never commit credentials.**
+- Dashboard access requires a login, with server-side sessions, CSRF protection and rate-limited sign-in.
+- The API can only start/stop/pause/resume the bot; no endpoint places an order.
+- Broker URLs must be Alpaca paper endpoints. Live and lookalike hosts are rejected.
+- Never load a model file from an untrusted source: joblib/pickle artifacts can execute code.
+
+## Testing
+
+```bash
+python -m pytest -q
+```
+
+The suite covers broker guardrails, the execution ledger and reconciliation, session-aware backtests, signal fallback, operator control and the dashboard API. All tests are offline.
 
 ## Status and limits
 
-The stage-1 changes override older behavior descriptions above: external positions are not auto-adopted, uncertain submissions lock subsequent entries durably, and a Linux file lock prevents two traders sharing a volume. The Docker dashboard uses one worker so its in-memory login limiter is not split across processes. Runtime state corruption refuses automatic reset. New canonical offline simulation includes configurable assumed fees/slippage, conservative stop-first handling and completed-trade accounting, but does not emulate queueing, partial fills, DAY-bracket expiration or broker execution. Simulated assumptions are not verified costs.
+This is a **portfolio-quality paper-trading prototype**, not a live-money system.
 
-This is a **portfolio-quality paper-trading prototype**, not a live-money system. The tests are offline and do not establish a profitable strategy or validate broker integration. Operator pause prevents new entries at the next control check, but does not guarantee an in-flight submission can be canceled. Resume does not bypass the drawdown halt, order cap or broker checks. The loop still needs broker fill reconciliation and restart recovery before unattended use; submitted orders may be rejected or partially filled. Crypto has no broker-side bracket protection, and its software exit logic only runs while the loop and data feeds are healthy. Stock bracket prices use the last quote at submission and may differ from the actual entry fill. Open broker orders conservatively block new entries. The legacy single-symbol loop in `scripts/paper_trading/paper_trading_loop.py` and experimental `src/` path are not the supported paper runtime.
+- Tests are offline. They do not establish a profitable strategy or validate broker integration.
+- Backtests are illustrative. Simulated fees and slippage are assumptions, not measured costs, and the simulator does not model queueing, partial fills or DAY-bracket expiry.
+- Crypto has no broker-side bracket protection; its software exits only run while the loop and data feeds are healthy.
+- Stopping the bot prevents new entries at the next control check but cannot guarantee that an in-flight submission is canceled.
+- The loop still needs broker fill reconciliation and restart recovery before any unattended use.
 
-For any old copy that contained real API credentials, rotate those credentials before publishing. `.env.local`, logs, model artifacts and trading state must stay out of Git. Never load a model from an untrusted pickle/joblib file.
+More detail: [hardening checkpoints](docs/CHECKPOINTS.md), [technical review](REVIEW_REPORT.md), [portfolio notes](docs/PORTFOLIO.md).
+
+## License
+
+Released under the [MIT License](LICENSE).

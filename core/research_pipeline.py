@@ -5,6 +5,7 @@ from pathlib import Path
 import importlib.metadata
 import json
 import math
+from typing import Any
 import pandas as pd
 from core.backtest_engine import BacktestPolicy, simulate, nonoverlapping_windows
 from data.bar_validation import validated_bars, bar_interval
@@ -85,7 +86,7 @@ def evaluate(bars, symbol, policy=BacktestPolicy(), warmup_bars=100, test_bars=1
     for number, (warmup, test) in enumerate(windows):
         context = bars.iloc[warmup.start:test.stop]
         sample = bars.iloc[test]
-        fold = dict(fold=number, warmup_start=context.index[0].isoformat(),
+        fold: dict[str, Any] = dict(fold=number, warmup_start=context.index[0].isoformat(),
             decision_time=bars.index[test.start-1].isoformat(),
             test_start=sample.index[0].isoformat(), test_end=sample.index[-1].isoformat(),
             test_rows=len(sample), variants={})
@@ -99,6 +100,8 @@ def evaluate(bars, symbol, policy=BacktestPolicy(), warmup_bars=100, test_bars=1
             artifacts.append((number, variant, curve, trades))
         benchmark_sample = sample
         if calendar is not None:
+            if timeframe is None:
+                raise ValueError('Timeframe required for calendar-aware evaluation')
             from core.stock_sessions import session_windows
             endings,_ = session_windows(sample.index,calendar,timeframe)
             regular_positions = [i for i,value in enumerate(endings) if pd.notna(value)]

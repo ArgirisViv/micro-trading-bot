@@ -103,20 +103,23 @@ def utcnow() -> datetime:
     """Get current UTC time - fixed deprecated datetime.utcnow()"""
     return datetime.now(timezone.utc)
 
-def _sleep_until_next_bar(tf: str):
+def _sleep_until_next_bar(tf: str) -> bool:
     now = utcnow()
     interval = bar_interval(tf).total_seconds()
     delta = max(1, interval - now.timestamp() % interval)
     logger.info(f"Waiting {delta}s until next {tf} bar...")
     while delta > 0:
+        if read_control()["stop_requested"]:
+            return True
         chunk = min(30, delta)
         time.sleep(chunk)
         delta -= chunk
         state = load_state()
         state['last_heartbeat'] = utcnow().isoformat()
         save_state(state)
+    return False
 
-def send_daily_report(state: dict, account_info: dict = None) -> None:
+def send_daily_report(state: dict, account_info: Optional[Any] = None) -> None:
     """Send daily trading report via Telegram"""
     try:
         today = utcnow().date().isoformat()
@@ -204,7 +207,7 @@ def should_send_weekly_report(state: dict) -> bool:
         logger.error(f"Error checking weekly report timing: {e}")
         return False
 
-def send_weekly_report(state: dict, account_info: dict = None) -> None:
+def send_weekly_report(state: dict, account_info: Optional[Any] = None) -> None:
     """Send weekly trading report via Telegram"""
     try:
         today = utcnow().date().isoformat()
@@ -375,7 +378,7 @@ def entries_enabled() -> bool:
     """A missing or corrupt operator control blocks every new entry."""
     return not read_control()["paused"]
 
-def should_trade_symbol(symbol: str, current_time: datetime.time) -> bool:
+def should_trade_symbol(symbol: str, current_time: dtime) -> bool:
     """Determine if we should trade a symbol based on asset type and current time"""
     if is_crypto_symbol(symbol):
         # Crypto trades 24/7
@@ -431,6 +434,9 @@ def _run_multi_asset_loop():
     
     try:
         while True:
+            if read_control()["stop_requested"]:
+                logger.info("Stop requested by dashboard; exiting paper loop without closing positions.")
+                break
             iteration += 1
             logger.info(f"=== Multi-Asset Loop Iteration {iteration} ===")
             console_logger.info(f"=== Multi-Asset Loop Iteration {iteration} ===")
@@ -550,10 +556,12 @@ def _run_multi_asset_loop():
                 cash_available = float(getattr(acct, "cash", 0.0))
                 if not math.isfinite(equity) or not math.isfinite(cash_available) or equity <= 0:
                     raise ValueError('Invalid broker account values')
-                if not state.get("daily_start_equity"):
+                stored_start_equity = state.get("daily_start_equity")
+                if stored_start_equity is None:
                     state["daily_start_equity"] = equity
+                    stored_start_equity = equity
                     save_state(state)
-                start_equity = float(state["daily_start_equity"])
+                start_equity = float(stored_start_equity)
                 daily_drawdown = ((start_equity - equity) / start_equity) if start_equity > 0 else 0.0
                 state["account_equity"] = equity
                 state["account_cash"] = cash_available
@@ -860,7 +868,9 @@ def _run_multi_asset_loop():
             # Sleep until next bar with logging
             logger.info("Sleeping until next bar...")
             console_logger.info("Sleeping until next bar...")
-            _sleep_until_next_bar(TIMEFRAME)
+            if _sleep_until_next_bar(TIMEFRAME):
+                logger.info("Stop requested by dashboard; exiting paper loop without closing positions.")
+                break
 
     except Exception as e:
         logger.exception("Multi-asset loop crashed with error")

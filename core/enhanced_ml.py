@@ -4,12 +4,10 @@ import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
-import xgboost as xgb
-import lightgbm as lgb
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -257,7 +255,7 @@ class EnhancedMLModel:
         logger.info(f"Online update completed with {len(X_new)} new samples")
         self.last_training = datetime.now()
     
-    def save_model(self, path: str = None):
+    def save_model(self, path: str | None = None):
         """
         Save the trained model and scaler.
         """
@@ -279,7 +277,7 @@ class EnhancedMLModel:
         joblib.dump(model_data, save_path)
         logger.info(f"Model saved to {save_path}")
     
-    def load_model(self, path: str = None):
+    def load_model(self, path: str | None = None):
         """
         Load a previously trained model.
         """
@@ -380,7 +378,7 @@ if __name__ == "__main__":
     
     # Load sample data
     from data.live_data_fetch import get_live_data
-    from core.indicators import add_indicators
+    from core.technical_indicators import add_indicators
     
     df = get_live_data("AAPL")
     df = add_indicators(df)

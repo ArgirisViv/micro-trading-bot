@@ -8,11 +8,12 @@ import pandas as pd
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict
 import os
 from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
+
 
 try:
     import psycopg2
@@ -21,17 +22,18 @@ try:
 except ImportError:
     POSTGRES_AVAILABLE = False
     psycopg2 = None
+    RealDictCursor = None
 
 class DatabaseManager:
     """
     Database manager for trading bot with SQLite and PostgreSQL support
     """
     
-    def __init__(self, db_type: str = 'sqlite', config: Dict = None):
+    def __init__(self, db_type: str = 'sqlite', config: Dict[str, Any] | None = None):
         self.db_type = db_type.lower()
         self.config = config or self._default_config()
-        self.connection = None
-        self.cursor = None
+        self.connection: Any
+        self.cursor: Any
         
         # Setup logging
         logging.basicConfig(level=logging.INFO)
@@ -40,7 +42,7 @@ class DatabaseManager:
         # Initialize database
         self.initialize_database()
         
-    def _default_config(self) -> Dict:
+    def _default_config(self) -> Dict[str, Any]:
         """Default database configuration"""
         return {
             'sqlite': {
@@ -101,7 +103,7 @@ class DatabaseManager:
     
     def _init_postgresql(self):
         """Initialize PostgreSQL database"""
-        if not POSTGRES_AVAILABLE:
+        if not POSTGRES_AVAILABLE or psycopg2 is None or RealDictCursor is None:
             raise ImportError("psycopg2 not available for PostgreSQL")
         
         pg_config = self.config['postgresql']
@@ -303,7 +305,7 @@ class DatabaseManager:
         
         self.connection.commit()
     
-    def insert_trade(self, trade_data: Dict) -> int:
+    def insert_trade(self, trade_data: Dict[str, Any]) -> int:
         """Insert trade record"""
         try:
             sql = '''
@@ -340,7 +342,13 @@ class DatabaseManager:
             self.cursor.execute(sql, values)
             self.connection.commit()
             
-            trade_id = self.cursor.lastrowid if self.db_type == 'sqlite' else self.cursor.fetchone()[0]
+            if self.db_type == 'sqlite':
+                trade_id = self.cursor.lastrowid
+            else:
+                inserted_row = self.cursor.fetchone()
+                trade_id = inserted_row[0] if inserted_row is not None else None
+            if trade_id is None:
+                raise RuntimeError("Database did not return an inserted trade ID")
             self.logger.info(f"Inserted trade: {trade_id}")
             return trade_id
             
@@ -349,7 +357,7 @@ class DatabaseManager:
             self.connection.rollback()
             raise
     
-    def update_position(self, position_data: Dict):
+    def update_position(self, position_data: Dict[str, Any]):
         """Update or insert position"""
         try:
             if self.db_type == 'sqlite':
@@ -432,7 +440,7 @@ class DatabaseManager:
             self.connection.rollback()
             raise
     
-    def insert_risk_metrics(self, risk_data: Dict):
+    def insert_risk_metrics(self, risk_data: Dict[str, Any]):
         """Insert risk metrics"""
         try:
             sql = '''
@@ -461,7 +469,7 @@ class DatabaseManager:
             self.connection.rollback()
             raise
     
-    def insert_ml_prediction(self, prediction_data: Dict):
+    def insert_ml_prediction(self, prediction_data: Dict[str, Any]):
         """Insert ML prediction"""
         try:
             sql = '''
@@ -492,7 +500,7 @@ class DatabaseManager:
             self.connection.rollback()
             raise
     
-    def insert_performance_metrics(self, performance_data: Dict):
+    def insert_performance_metrics(self, performance_data: Dict[str, Any]):
         """Insert performance metrics"""
         try:
             sql = '''
@@ -538,11 +546,11 @@ class DatabaseManager:
             self.connection.rollback()
             raise
     
-    def get_trades(self, symbol: str = None, start_date: datetime = None, end_date: datetime = None) -> pd.DataFrame:
+    def get_trades(self, symbol: str | None = None, start_date: datetime | None = None, end_date: datetime | None = None) -> pd.DataFrame:
         """Get trades from database"""
         try:
             sql = "SELECT * FROM trades WHERE 1=1"
-            values = []
+            values: list[Any] = []
             
             if symbol:
                 sql += " AND symbol = %s" if self.db_type != 'sqlite' else " AND symbol = ?"
@@ -592,11 +600,11 @@ class DatabaseManager:
             self.logger.error(f"Error getting positions: {e}")
             return pd.DataFrame()
     
-    def get_market_data(self, symbol: str, start_date: datetime = None, end_date: datetime = None) -> pd.DataFrame:
+    def get_market_data(self, symbol: str, start_date: datetime | None = None, end_date: datetime | None = None) -> pd.DataFrame:
         """Get market data from database"""
         try:
             sql = "SELECT * FROM market_data WHERE symbol = %s" if self.db_type != 'sqlite' else "SELECT * FROM market_data WHERE symbol = ?"
-            values = [symbol]
+            values: list[Any] = [symbol]
             
             if start_date:
                 sql += " AND timestamp >= %s" if self.db_type != 'sqlite' else " AND timestamp >= ?"
@@ -654,7 +662,7 @@ class DatabaseManager:
             self.logger.error(f"Error getting risk metrics: {e}")
             return pd.DataFrame()
     
-    def get_performance_metrics(self, start_date: datetime = None, end_date: datetime = None) -> pd.DataFrame:
+    def get_performance_metrics(self, start_date: datetime | None = None, end_date: datetime | None = None) -> pd.DataFrame:
         """Get performance metrics from database"""
         try:
             sql = "SELECT * FROM performance_metrics WHERE 1=1"
@@ -689,7 +697,7 @@ class DatabaseManager:
             self.logger.error(f"Error getting performance metrics: {e}")
             return pd.DataFrame()
     
-    def execute_query(self, sql: str, values: tuple = None) -> pd.DataFrame:
+    def execute_query(self, sql: str, values: tuple[Any, ...] | None = None) -> pd.DataFrame:
         """Execute custom SQL query"""
         try:
             if values:
@@ -832,11 +840,11 @@ class DatabaseMigrator:
             self.logger.error(f"Error migrating state: {e}")
 
 # Utility functions
-def create_database_manager(db_type: str = 'sqlite', config: Dict = None) -> DatabaseManager:
+def create_database_manager(db_type: str = 'sqlite', config: Dict[str, Any] | None = None) -> DatabaseManager:
     """Factory function to create database manager"""
     return DatabaseManager(db_type, config)
 
-def migrate_data_to_database(db_type: str = 'sqlite', config: Dict = None, data_dir: str = '.'):
+def migrate_data_to_database(db_type: str = 'sqlite', config: Dict[str, Any] | None = None, data_dir: str = '.'):
     """Utility function to migrate data to database"""
     with create_database_manager(db_type, config) as db_manager:
         migrator = DatabaseMigrator(db_manager)

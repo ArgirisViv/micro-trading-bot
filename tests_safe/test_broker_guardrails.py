@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -7,7 +8,7 @@ import core.alpaca_trade as broker
 
 class FakeClient:
     def __init__(self):
-        self.submitted = None
+        self.submitted: dict[str, Any] | None = None
         self.closed = None
 
     def get_latest_trade(self, symbol):
@@ -35,6 +36,7 @@ def test_submit_order_builds_bracket(monkeypatch):
     monkeypatch.setattr(broker, "APCA_API_SECRET_KEY", "paper-secret")
     monkeypatch.setattr(broker, "_client_for", lambda symbol: client)
     broker.submit_order("AAPL", "buy", 2, stop_loss_pct=0.02, take_profit_pct=0.04)
+    assert client.submitted is not None
     assert client.submitted["stop_loss"]["stop_price"] == 98.0
     assert client.submitted["take_profit"]["limit_price"] == 104.0
 
@@ -67,6 +69,7 @@ def test_crypto_order_is_gtc_without_bracket(monkeypatch):
     monkeypatch.setattr(broker, "APCA_API_SECRET_KEY", "paper-secret")
     monkeypatch.setattr(broker, "_client_for", lambda symbol: client)
     broker.submit_order("BTCUSD", "buy", 0.001)
+    assert client.submitted is not None
     assert client.submitted["time_in_force"] == "gtc"
     assert client.submitted["symbol"] == "BTC/USD"
     assert "order_class" not in client.submitted

@@ -1,6 +1,7 @@
 """Ledger-owned long-only exits. No historical feed, indicators or entry controls."""
 from datetime import datetime,timezone
 from decimal import Decimal,ROUND_DOWN
+from typing import Any
 from core.execution_ledger import ExecutionLedger,LedgerError,amount,utc_timestamp
 from core.execution_runtime import refresh_execution
 
@@ -28,7 +29,12 @@ def evaluate_exit(ledger,lot,quote,now):
 def supervision_cycle(ledger,broker,now=None):
     now=now or datetime.now(timezone.utc)
     snapshot=refresh_execution(ledger,broker=broker)
-    result=dict(checked_at=utc_timestamp(now),submitted=[],issues=[],mode='crypto_exit_only')
+    result: dict[str, Any] = dict(
+        checked_at=utc_timestamp(now),
+        submitted=[],
+        issues=[],
+        mode='crypto_exit_only',
+    )
     # Missing broker-side crypto brackets alone is NOT a reason to suppress a
     # required exit. All identity/order/inventory errors still fail closed.
     if (snapshot['faults'] or snapshot['unresolved_client_ids'] or snapshot.get('read_errors') or

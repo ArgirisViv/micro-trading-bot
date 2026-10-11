@@ -24,6 +24,8 @@ class Money:
         """Validate money amount"""
         if not isinstance(self.amount, (int, float, Decimal)):
             raise ValueError("Amount must be numeric")
+        if not isinstance(self.amount, Decimal):
+            object.__setattr__(self, "amount", Decimal(str(self.amount)))
     
     def __add__(self, other: 'Money') -> 'Money':
         """Add two money amounts"""
@@ -41,15 +43,16 @@ class Money:
         """Multiply money by scalar"""
         if not isinstance(multiplier, (int, float, Decimal)):
             raise TypeError("Multiplier must be numeric")
-        return Money(self.amount * multiplier)
+        return Money(self.amount * Decimal(str(multiplier)))
     
     def __truediv__(self, divisor: Union[int, float, Decimal]) -> 'Money':
         """Divide money by scalar"""
         if not isinstance(divisor, (int, float, Decimal)):
             raise TypeError("Divisor must be numeric")
-        if divisor == 0:
+        decimal_divisor = Decimal(str(divisor))
+        if decimal_divisor == 0:
             raise ValueError("Cannot divide by zero")
-        return Money(self.amount / divisor)
+        return Money(self.amount / decimal_divisor)
     
     def __lt__(self, other: 'Money') -> bool:
         """Less than comparison"""
@@ -122,6 +125,8 @@ class Percentage:
         """Validate percentage value"""
         if not isinstance(self.value, (int, float, Decimal)):
             raise ValueError("Value must be numeric")
+        if not isinstance(self.value, Decimal):
+            object.__setattr__(self, "value", Decimal(str(self.value)))
         if self.value < -100 or self.value > 1000:  # Allow up to 1000% for extreme cases
             raise ValueError("Percentage must be between -100% and 1000%")
     
@@ -141,15 +146,16 @@ class Percentage:
         """Multiply percentage by scalar"""
         if not isinstance(multiplier, (int, float, Decimal)):
             raise TypeError("Multiplier must be numeric")
-        return Percentage(self.value * multiplier)
+        return Percentage(self.value * Decimal(str(multiplier)))
     
     def __truediv__(self, divisor: Union[int, float, Decimal]) -> 'Percentage':
         """Divide percentage by scalar"""
         if not isinstance(divisor, (int, float, Decimal)):
             raise TypeError("Divisor must be numeric")
-        if divisor == 0:
+        decimal_divisor = Decimal(str(divisor))
+        if decimal_divisor == 0:
             raise ValueError("Cannot divide by zero")
-        return Percentage(self.value / divisor)
+        return Percentage(self.value / decimal_divisor)
     
     def __lt__(self, other: 'Percentage') -> bool:
         """Less than comparison"""
@@ -342,6 +348,8 @@ class Confidence:
         """Validate confidence value"""
         if not isinstance(self.value, (int, float, Decimal)):
             raise ValueError("Value must be numeric")
+        if not isinstance(self.value, Decimal):
+            object.__setattr__(self, "value", Decimal(str(self.value)))
         if self.value < 0 or self.value > 1:
             raise ValueError("Confidence must be between 0.0 and 1.0")
     
@@ -363,16 +371,17 @@ class Confidence:
         """Multiply confidence by scalar (capped at 1.0)"""
         if not isinstance(multiplier, (int, float, Decimal)):
             raise TypeError("Multiplier must be numeric")
-        result = min(self.value * multiplier, Decimal('1.0'))
+        result = min(self.value * Decimal(str(multiplier)), Decimal('1.0'))
         return Confidence(result)
     
     def __truediv__(self, divisor: Union[int, float, Decimal]) -> 'Confidence':
         """Divide confidence by scalar"""
         if not isinstance(divisor, (int, float, Decimal)):
             raise TypeError("Divisor must be numeric")
-        if divisor == 0:
+        decimal_divisor = Decimal(str(divisor))
+        if decimal_divisor == 0:
             raise ValueError("Cannot divide by zero")
-        result = self.value / divisor
+        result = self.value / decimal_divisor
         return Confidence(min(result, Decimal('1.0')))
     
     def __lt__(self, other: 'Confidence') -> bool:

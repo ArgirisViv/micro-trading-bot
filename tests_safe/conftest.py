@@ -16,6 +16,7 @@ def no_network(monkeypatch):
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD_HASH", generate_password_hash("correct-horse-paper-123", method="pbkdf2:sha256:1000"))
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS_DB", str(tmp_path / "dashboard-users.sqlite3"))
     monkeypatch.setenv("CONTROL_FILE", str(tmp_path / "control.json"))
     server.app.secret_key = "test-secret-key-with-at-least-32-characters"
     monkeypatch.setattr(server, "BACKTEST_CSV", tmp_path / "backtest.csv")

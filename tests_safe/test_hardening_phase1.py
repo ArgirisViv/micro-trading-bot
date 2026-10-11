@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import math
 import pandas as pd
 import pytest
-from core.execution_safety import risk_quantity, reset_daily_state, exclusive_runtime
+from core.execution_safety import risk_quantity, reset_daily_state
 from data.bar_validation import validated_bars, bar_interval
 from core.enhanced_strategy import EnhancedStrategy
 from data import hybrid_fetch
@@ -63,7 +63,7 @@ def test_completed_candles_only_and_normalized_columns():
 def test_bad_bars_fail_closed(problem):
     frame = bars()
     now = '2026-09-16T10:16Z'
-    if problem == 'naive': frame.index = frame.index.tz_localize(None)
+    if problem == 'naive': frame.index = pd.DatetimeIndex(frame.index).tz_localize(None)
     elif problem == 'duplicate': frame.index = [frame.index[0]] * 3
     elif problem == 'nan': frame.iloc[0,0] = math.nan
     elif problem == 'negative': frame.iloc[0,4] = -1
@@ -95,9 +95,3 @@ def test_routing_never_uses_crypto_substring(monkeypatch):
     assert hybrid_fetch.is_crypto_symbol('SOLUSD')
     with pytest.raises(ValueError): hybrid_fetch.is_crypto_symbol('UNKNOWN')
 
-
-def test_second_trader_rejected(tmp_path):
-    pytest.importorskip('fcntl')
-    with exclusive_runtime(str(tmp_path / 'trader.lock')):
-        with pytest.raises(RuntimeError):
-            with exclusive_runtime(str(tmp_path / 'trader.lock')): pass

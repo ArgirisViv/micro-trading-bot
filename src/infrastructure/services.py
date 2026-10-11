@@ -252,7 +252,7 @@ class AlpacaTradingAPI(TradingAPIService):
             url = f"{self.base_url}/v2/orders"
             
             # Convert order to Alpaca format
-            order_data = {
+            order_data: Dict[str, Any] = {
                 "symbol": order.symbol,
                 "qty": str(order.quantity),
                 "side": order.side.value,

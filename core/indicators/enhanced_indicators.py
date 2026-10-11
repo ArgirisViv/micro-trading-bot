@@ -329,8 +329,9 @@ class EnhancedIndicators:
             self.logger.error(f"Error calculating support/resistance: {e}")
             return {'support': 0, 'resistance': 0}
     
-    def get_indicator_summary(self, prices: pd.Series, high: pd.Series = None, low: pd.Series = None, 
-                            volume: pd.Series = None) -> Dict:
+    def get_indicator_summary(self, prices: pd.Series, high: Optional[pd.Series] = None,
+                            low: Optional[pd.Series] = None,
+                            volume: Optional[pd.Series] = None) -> Dict:
         """Get summary of all indicators"""
         try:
             summary = {}
@@ -408,7 +409,7 @@ def add_enhanced_indicators(df: pd.DataFrame) -> pd.DataFrame:
             df['stoch_d'] = stoch_d
         
         # Fill NaN values
-        df = df.fillna(method='ffill').fillna(0)
+        df = df.ffill().fillna(0)
         
         return df
         

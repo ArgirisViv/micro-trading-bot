@@ -3,10 +3,17 @@ from datetime import date
 import json
 import re
 from pathlib import Path
+from typing import Any, TypedDict
 import pandas as pd
 
 
-def calendar_sessions(payload):
+class TradingCalendar(TypedDict):
+    start: date
+    end: date
+    sessions: list[tuple[pd.Timestamp, pd.Timestamp]]
+
+
+def calendar_sessions(payload: dict[str, Any]) -> TradingCalendar:
     if not isinstance(payload,dict) or payload.get('provider') != 'Alpaca paper calendar':
         raise ValueError('Explicit Alpaca paper calendar envelope required')
     first,last = date.fromisoformat(payload['requested_start']),date.fromisoformat(payload['requested_end'])
@@ -28,18 +35,19 @@ def calendar_sessions(payload):
         if opening >= closing: raise ValueError('Invalid session boundary')
         sessions.append((opening,closing))
         previous=day
-    return dict(start=first,end=last,sessions=sessions)
+    return TradingCalendar(start=first, end=last, sessions=sessions)
 
 
-def load_calendar(path):
+def load_calendar(path: str | Path) -> TradingCalendar:
     return calendar_sessions(json.loads(Path(path).read_text(encoding='utf-8-sig')))
 
 
-def session_windows(index,calendar,timeframe):
+def session_windows(index: pd.DatetimeIndex, calendar: TradingCalendar,
+                    timeframe: str) -> tuple[pd.Series, pd.Timedelta]:
     """Whole bars inside regular sessions; reject unsupported coarse candles."""
     from data.bar_validation import bar_interval
     duration=bar_interval(timeframe)
-    if duration > pd.Timedelta(minutes=30):
+    if duration > pd.Timedelta(30, unit='min'):
         raise ValueError('Use at most 30-minute bars; coarse bars can straddle session boundaries')
     local=index.tz_convert('America/New_York')
     if any(not calendar['start'] <= day <= calendar['end'] for day in local.date):

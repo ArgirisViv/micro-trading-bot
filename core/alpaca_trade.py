@@ -5,14 +5,17 @@ from __future__ import annotations
 import math
 import os
 import requests
+from typing import Any
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 try:
     from alpaca_trade_api.rest import REST, APIError
+    from alpaca_trade_api.common import URL
 except ImportError:  # Dashboard and offline tests do not require the broker SDK.
     REST = None
     APIError = None
+    URL = None
 from config import (
     APCA_API_KEY_ID,
     APCA_API_SECRET_KEY,
@@ -54,7 +57,7 @@ def _require_paper_endpoint(url: str) -> None:
         raise RuntimeError("Only the official Alpaca paper-trading endpoint is supported")
 
 
-def _get_client(asset_class: str) -> REST:
+def _get_client(asset_class: str) -> Any:
     global _stock_client, _crypto_client
     if asset_class not in {"stocks", "crypto"}:
         raise ValueError("Unsupported asset class")
@@ -65,22 +68,25 @@ def _get_client(asset_class: str) -> REST:
         raise RuntimeError("alpaca-trade-api is not installed")
     if not APCA_API_KEY_ID or not APCA_API_SECRET_KEY:
         raise RuntimeError("Alpaca paper-trading credentials are not configured")
+    url_type = URL
+    if url_type is None:
+        raise RuntimeError("alpaca-trade-api URL support is unavailable")
     os.environ['APCA_RETRY_MAX']='0'
     if asset_class == "crypto":
         if _crypto_client is None:
             _crypto_client = _configure_transport(REST(
                 APCA_API_KEY_ID, APCA_API_SECRET_KEY,
-                base_url=CRYPTO_TRADING_URL, api_version="v2",
+                base_url=url_type(CRYPTO_TRADING_URL), api_version="v2",
             ))
         return _crypto_client
     if _stock_client is None:
         _stock_client = _configure_transport(REST(
             APCA_API_KEY_ID, APCA_API_SECRET_KEY,
-            base_url=STOCK_TRADING_URL, api_version="v2",
+            base_url=url_type(STOCK_TRADING_URL), api_version="v2",
         ))
     return _stock_client
 
-def _client_for(symbol: str) -> REST:
+def _client_for(symbol: str) -> Any:
     """
     Επέστρεψε τον stock client αν το symbol είναι σε STOCK_WATCHLIST,
     αλλιώς τον crypto client (αν υπάρχει στο CRYPTO_WATCHLIST).
@@ -270,10 +276,13 @@ def submit_order(
             raise ValueError("Invalid broker quote")
 
     # 2) Υπολόγισε τιμές SL/TP
-    stop_price  = price * (1 - stop_loss_pct)   if (stop_loss_pct  is not None and side=="buy") else \
-                  price * (1 + stop_loss_pct)   if (stop_loss_pct  is not None) else None
-    limit_price = price * (1 + take_profit_pct) if (take_profit_pct is not None and side=="buy") else \
-                  price * (1 - take_profit_pct) if (take_profit_pct is not None) else None
+    stop_price = None
+    limit_price = None
+    if price is not None:
+        if stop_loss_pct is not None:
+            stop_price = price * (1 - stop_loss_pct if side == "buy" else 1 + stop_loss_pct)
+        if take_profit_pct is not None:
+            limit_price = price * (1 + take_profit_pct if side == "buy" else 1 - take_profit_pct)
 
     # 3) Στήσιμο βασικών παραμέτρων
     params = {

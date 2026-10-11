@@ -1,7 +1,7 @@
 # strategy.py
 
 import pandas as pd
-from core.indicators import add_indicators
+from core.technical_indicators import add_indicators
 from core.ml_model import create_features, load_model
 
 def apply_strategy(data) -> pd.DataFrame:
@@ -30,6 +30,8 @@ def apply_strategy(data) -> pd.DataFrame:
     try:
         X, _ = create_features(df)
         model = load_model()
+        if model is None:
+            raise ValueError("No trained model is available")
         df.loc[X.index, "prediction"] = model.predict(X)
     except Exception as e:
         # Αν δεν υπάρχει model ή υπάρχει πρόβλημα, χρησιμοποιούμε μόνο technical indicators
@@ -44,8 +46,6 @@ def apply_strategy(data) -> pd.DataFrame:
     df.loc[short_cond, "signal"] = -1
 
     return df
-
-
 
 
 

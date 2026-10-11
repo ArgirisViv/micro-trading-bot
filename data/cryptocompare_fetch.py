@@ -21,7 +21,7 @@ def get_cryptocompare_data(symbol,timeframe=TIMEFRAME,lookback=LOOKBACK):
     factor=seconds//unit
     if unit==60 and lookback>7:raise DataError('Minute-history retention exceeded; choose another dataset')
     endpoint={60:'histominute',3600:'histohour',86400:'histoday'}[unit]
-    now=utc_now();start=now-pd.Timedelta(days=lookback)
+    now=utc_now();start=now-pd.Timedelta(lookback, unit='D')
     cursor=int(now.timestamp());rows=[]
     headers={'authorization':'Apikey '+CRYPTOCOMPARE_API_KEY}
     for _ in range(20):

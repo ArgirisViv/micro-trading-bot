@@ -40,11 +40,12 @@ def train_and_save(df, model_path=MODEL_FILE):
     model = RandomForestClassifier(n_estimators=200, min_samples_leaf=5, random_state=42)
     model.fit(X_train, y_train)
     score = float(accuracy_score(y_test, model.predict(X_test)))
-    model.orbit_training_end = str(X_train.index[-1])
-    model.orbit_schema = FEATURE_COLUMNS
+    training_end = str(X_train.index[-1])
+    setattr(model, 'orbit_training_end', training_end)
+    setattr(model, 'orbit_schema', FEATURE_COLUMNS)
     joblib.dump(model, model_path)
     metadata = {'schema_version': 1, 'features': FEATURE_COLUMNS,
-        'training_end': model.orbit_training_end, 'holdout_start': str(X_test.index[0]),
+        'training_end': training_end, 'holdout_start': str(X_test.index[0]),
         'holdout_end': str(X_test.index[-1]), 'holdout_accuracy': score,
         'majority_baseline_accuracy': float(y_test.value_counts(normalize=True).max()),
         'training_rows': len(X_train), 'holdout_rows': len(X_test),

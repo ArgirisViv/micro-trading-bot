@@ -6,6 +6,8 @@ import json
 import math
 import os
 import secrets
+import sqlite3
+import subprocess
 import sys
 import time
 from collections import defaultdict, deque
@@ -17,9 +19,9 @@ from typing import Any
 import pandas as pd
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, session
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
-from runtime_control import read_control, write_control
+from runtime_control import read_control, request_stop, write_control
 from core.execution_runtime import ledger_path
 from core.execution_ledger import ExecutionLedger
 
@@ -45,17 +47,121 @@ app.config.update(
 )
 _login_attempts: dict[str, deque[float]] = defaultdict(deque)
 _login_lock = Lock()
+_registration_attempts: dict[str, deque[float]] = defaultdict(deque)
+_accounts_lock = Lock()
+_bot_process_lock = Lock()
+_bot_process: subprocess.Popen[str] | None = None
+_bot_log_handle: Any = None
+
+
+def _accounts_database() -> Path:
+    return Path(os.getenv("DASHBOARD_ACCOUNTS_DB", ROOT / "dashboard_accounts.sqlite3"))
+
+
+def _accounts_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(_accounts_database())
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_users (
+            username TEXT PRIMARY KEY COLLATE NOCASE,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    return connection
+
+
+def _accounts_exist() -> bool:
+    try:
+        with _accounts_lock, _accounts_connection() as connection:
+            return connection.execute("SELECT EXISTS(SELECT 1 FROM dashboard_users)").fetchone()[0] == 1
+    except sqlite3.Error:
+        return False
+
+
+def _valid_username(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    username = value.strip()
+    if not 3 <= len(username) <= 32:
+        return None
+    if not all(character.isascii() and (character.isalnum() or character in "_.-") for character in username):
+        return None
+    return username
+
+
+def _valid_password(value: object) -> str | None:
+    if not isinstance(value, str) or not 12 <= len(value) <= 1024:
+        return None
+    return value
+
+
+def _is_rate_limited(attempts_by_address: dict[str, deque[float]], address: str) -> bool:
+    now = time.monotonic()
+    with _login_lock:
+        attempts = attempts_by_address[address]
+        while attempts and attempts[0] < now - 300:
+            attempts.popleft()
+        if len(attempts) >= 5:
+            return True
+        attempts.append(now)
+    return False
+
+
+def _start_session(username: str) -> dict[str, object]:
+    session.clear()
+    session.permanent = True
+    session["authenticated"] = True
+    session["username"] = username
+    session["csrf"] = secrets.token_urlsafe(32)
+    return {"authenticated": True, "csrf": session["csrf"], "username": username}
 
 
 def _auth_configured() -> bool:
-    return bool(os.getenv("DASHBOARD_PASSWORD_HASH") and app.secret_key and len(app.secret_key) >= 32)
+    return bool(
+        app.secret_key
+        and len(app.secret_key) >= 32
+        and (os.getenv("DASHBOARD_PASSWORD_HASH") or _accounts_exist())
+    )
+
+
+def _registration_configured() -> bool:
+    return bool(app.secret_key and len(app.secret_key) >= 32)
+
+
+def _paper_broker_urls_configured() -> bool:
+    expected = "https://paper-api.alpaca.markets"
+    stock_url = os.getenv("STOCK_TRADING_URL", expected).rstrip("/")
+    crypto_url = os.getenv("CRYPTO_TRADING_URL", expected).rstrip("/")
+    return stock_url == expected and crypto_url == expected
+
+
+def _managed_bot_status() -> dict[str, Any]:
+    global _bot_process, _bot_log_handle
+    with _bot_process_lock:
+        process = _bot_process
+        if process is not None and process.poll() is not None:
+            _bot_process = None
+            if _bot_log_handle is not None:
+                _bot_log_handle.close()
+                _bot_log_handle = None
+            process = None
+        control = read_control()
+        return {
+            "running": process is not None,
+            "stopping": process is not None and control["stop_requested"],
+            "managed_by_dashboard": process is not None,
+            "pid": process.pid if process is not None else None,
+            "paper_safe": _paper_broker_urls_configured(),
+        }
 
 
 @app.before_request
 def require_api_login():
     if not request.path.startswith("/api/"):
         return None
-    if request.path in {"/api/health", "/api/auth/login", "/api/auth/status"}:
+    if request.path in {"/api/health", "/api/auth/login", "/api/auth/register", "/api/auth/status"}:
         return None
     if not _auth_configured():
         return jsonify({"error": "Dashboard authentication is not configured"}), 503
@@ -77,6 +183,7 @@ def auth_status():
         "configured": configured,
         "authenticated": authenticated,
         "csrf": session.get("csrf") if authenticated else None,
+        "registration_available": _registration_configured(),
     })
 
 
@@ -90,31 +197,118 @@ def auth_login():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid credentials payload"}), 400
     address = request.remote_addr or "unknown"
-    now = time.monotonic()
-    with _login_lock:
-        attempts = _login_attempts[address]
-        while attempts and attempts[0] < now - 300:
-            attempts.popleft()
-        if len(attempts) >= 5:
-            return jsonify({"error": "Too many attempts; wait five minutes"}), 429
-        # Reserve the attempt under the lock BEFORE expensive hash verification.
-        attempts.append(now)
+    if _is_rate_limited(_login_attempts, address):
+        return jsonify({"error": "Too many attempts; wait five minutes"}), 429
+    username = _valid_username(data.get("username"))
     password = data.get("password", "")
-    if not isinstance(password, str) or len(password) > 1024 or not check_password_hash(os.environ["DASHBOARD_PASSWORD_HASH"], password):
+    if not isinstance(password, str) or len(password) > 1024:
         return jsonify({"error": "Incorrect password"}), 401
+    account_password_hash = None
+    if username:
+        try:
+            with _accounts_lock, _accounts_connection() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM dashboard_users WHERE username = ?",
+                    (username,),
+                ).fetchone()
+                account_password_hash = row[0] if row else None
+        except sqlite3.Error:
+            return jsonify({"error": "Account storage is unavailable"}), 503
+    legacy_hash = os.getenv("DASHBOARD_PASSWORD_HASH")
+    valid_account = bool(account_password_hash and check_password_hash(account_password_hash, password))
+    valid_legacy = bool(not username and legacy_hash and check_password_hash(legacy_hash, password))
+    if not valid_account and not valid_legacy:
+        return jsonify({"error": "Incorrect username or password"}), 401
     with _login_lock:
         _login_attempts.pop(address, None)
-    session.clear()
-    session.permanent = True
-    session["authenticated"] = True
-    session["csrf"] = secrets.token_urlsafe(32)
-    return jsonify({"authenticated": True, "csrf": session["csrf"]})
+    return jsonify(_start_session(username or "local-admin"))
+
+
+@app.post("/api/auth/register")
+def auth_register():
+    if not _registration_configured():
+        return jsonify({"error": "Configure DASHBOARD_SESSION_SECRET first"}), 503
+    if not request.is_json or request.headers.get("X-Requested-With") != "Orbit":
+        return jsonify({"error": "JSON request required"}), 400
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or set(data) != {"username", "password"}:
+        return jsonify({"error": "Provide a username and password"}), 400
+    address = request.remote_addr or "unknown"
+    if _is_rate_limited(_registration_attempts, address):
+        return jsonify({"error": "Too many attempts; wait five minutes"}), 429
+    username = _valid_username(data["username"])
+    password = _valid_password(data["password"])
+    if not username:
+        return jsonify({"error": "Username must be 3-32 characters using letters, numbers, ., _ or -"}), 400
+    if not password:
+        return jsonify({"error": "Password must be 12-1024 characters"}), 400
+    try:
+        with _accounts_lock, _accounts_connection() as connection:
+            connection.execute(
+                "INSERT INTO dashboard_users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, generate_password_hash(password), datetime.now(timezone.utc).isoformat()),
+            )
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "This username is already registered"}), 409
+    except sqlite3.Error:
+        return jsonify({"error": "Account storage is unavailable"}), 503
+    with _login_lock:
+        _registration_attempts.pop(address, None)
+    return jsonify(_start_session(username)), 201
 
 
 @app.post("/api/auth/logout")
 def auth_logout():
     session.clear()
     return jsonify({"authenticated": False})
+
+
+@app.get("/api/bot")
+def bot_status():
+    return jsonify(_managed_bot_status())
+
+
+@app.post("/api/bot")
+def bot_control():
+    global _bot_process, _bot_log_handle
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or data.get("action") not in {"start", "stop"} or set(data) != {"action"}:
+        return jsonify({"error": "Expected start or stop action"}), 400
+    if data["action"] == "stop":
+        status = _managed_bot_status()
+        if not status["managed_by_dashboard"]:
+            return jsonify({"error": "No dashboard-managed paper bot is running"}), 409
+        try:
+            request_stop()
+        except OSError:
+            return jsonify({"error": "Could not request a safe bot shutdown"}), 503
+        return jsonify(_managed_bot_status())
+
+    if not _paper_broker_urls_configured():
+        return jsonify({"error": "Dashboard start is restricted to Alpaca paper-trading URLs"}), 409
+    with _bot_process_lock:
+        if _bot_process is not None and _bot_process.poll() is None:
+            return jsonify({"error": "The dashboard-managed paper bot is already running"}), 409
+        runtime = _runtime_status(_read_state())
+        if runtime["status"] in {"online", "paused"}:
+            return jsonify({"error": "A paper bot is already running outside this dashboard session"}), 409
+        try:
+            write_control(paused=True)
+            _bot_log_handle = (ROOT / "aether_dashboard_launcher.log").open("a", encoding="utf-8")
+            _bot_process = subprocess.Popen(
+                [sys.executable, "-m", "scripts.paper_trading.multi_asset_loop"],
+                cwd=ROOT,
+                stdout=_bot_log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except OSError:
+            if _bot_log_handle is not None:
+                _bot_log_handle.close()
+                _bot_log_handle = None
+            _bot_process = None
+            return jsonify({"error": "Could not start the local paper bot"}), 503
+    return jsonify(_managed_bot_status()), 201
 
 
 @app.get("/api/control")
@@ -405,10 +599,14 @@ def _performance_payload(backtest: pd.DataFrame, trades: pd.DataFrame) -> dict[s
     backtest_returns = _backtest_trade_returns(backtest)
     trade_returns = live_returns or backtest_returns
     source = live_source if live_returns else "backtest-trades" if backtest_returns else None
-    execution=_execution_payload()
-    if execution['available'] and not execution.get('faults'):
+    execution = _execution_payload()
+    closed_trades = execution.get('closed_trades')
+    if execution['available'] and not execution.get('faults') and isinstance(closed_trades, list):
         # Completed owned inventory cycles, never partial-exit checkpoints.
-        closed=sorted(execution['closed_trades'],key=lambda row:(row['exit_time'] or '',row['entry_id']))
+        closed = sorted(
+            (row for row in closed_trades if isinstance(row, dict)),
+            key=lambda row: (str(row.get('exit_time') or ''), str(row.get('entry_id') or '')),
+        )
         if closed:
             trade_returns=[float(row['realized_gross']) for row in closed]
             source='paper-ledger-gross-usd'
@@ -416,9 +614,7 @@ def _performance_payload(backtest: pd.DataFrame, trades: pd.DataFrame) -> dict[s
     monthly: list[dict[str, Any]] = []
     if not backtest.empty:
         periods = backtest["timestamp"].dt.to_period("M")
-        monthly_returns = backtest.groupby(periods)["strat_return"].apply(
-            lambda values: (1.0 + values).prod() - 1.0
-        )
+        monthly_returns = (1.0 + backtest["strat_return"]).groupby(periods).prod() - 1.0
         monthly = [
             {"month": str(period), "return_pct": float(value * 100)}
             for period, value in monthly_returns.tail(18).items()
@@ -450,7 +646,7 @@ def health():
                     'check': 'http_liveness_only'})
 
 
-def _execution_payload():
+def _execution_payload() -> dict[str, Any]:
     """Read-only SQLite view. No broker calls, no implicit database creation."""
     try:
         payload=ExecutionLedger(ledger_path(STATE_JSON),readonly=True).snapshot()
@@ -567,7 +763,7 @@ def backtest():
     if frame.empty:
         return jsonify([])
     output = frame[["timestamp", "close", "strat_return", "equity", "benchmark", "drawdown_pct"]].copy().tail(3000)
-    output["timestamp"] = output["timestamp"].map(lambda value: value.isoformat())
+    output["timestamp"] = output["timestamp"].map(_iso_timestamp)
     return jsonify(_clean_json(output.to_dict(orient="records")))
 
 
@@ -585,7 +781,7 @@ def paper_equity():
     if frame.empty:
         return jsonify([])
     output = frame[["timestamp", "equity", "cash"]].copy()
-    output["timestamp"] = output["timestamp"].map(lambda value: value.isoformat())
+    output["timestamp"] = output["timestamp"].map(_iso_timestamp)
     return jsonify(_clean_json(output.to_dict(orient="records")))
 
 
@@ -596,7 +792,7 @@ def walkforward():
         return jsonify([])
     output = frame.copy().tail(250)
     for column in ("TrainStart", "TrainEnd", "TestStart", "TestEnd"):
-        output[column] = output[column].map(lambda value: value.isoformat())
+        output[column] = output[column].map(_iso_timestamp)
     return jsonify(_clean_json(output.to_dict(orient="records")))
 
 

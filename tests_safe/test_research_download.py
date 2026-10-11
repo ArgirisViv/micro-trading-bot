@@ -1,4 +1,5 @@
 import json
+from typing import Any
 import pandas as pd
 import pytest
 from scripts.download_research_data import fetch, date_range, load_key, safe_url, save_dataset, DownloadError
@@ -58,7 +59,7 @@ def test_errors_do_not_expose_provider_body_or_key(code,message):
 
 @pytest.mark.parametrize('damage',['duplicate','ohlc','outside','empty','status'])
 def test_bad_payload(damage):
-    body = dict(status='OK',results=[row()])
+    body: dict[str, Any] = dict(status='OK',results=[row()])
     if damage == 'duplicate': body['results'] *= 2
     if damage == 'ohlc': body['results'][0]['l'] = 500
     if damage == 'outside': body['results'] = [row('2025-01-01T13:30Z')]

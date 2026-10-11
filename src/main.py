@@ -16,6 +16,11 @@ sys.path.insert(0, str(project_root))
 from .application.services import TradingBotService, ServiceFactory
 from .infrastructure.services import InfrastructureServiceFactory
 from .presentation.services import TradingBotDashboard, TradingBotCLI
+from .domain.entities import Portfolio
+from .domain.services import (
+    ConcreteRiskManagementService as DomainRiskManagementService,
+    ConcreteStrategyService,
+)
 from .domain.repositories import (
     TradingRepository, DataRepository, NotificationRepository,
     ConfigurationRepository, PerformanceRepository, PortfolioRepository
@@ -81,8 +86,6 @@ class TradingBotApplication:
             data_repo = InMemoryDataRepository()
             notification_repo = InMemoryNotificationRepository()
             config_repo = InMemoryConfigurationRepository()
-            performance_repo = InMemoryPerformanceRepository()
-            portfolio_repo = InMemoryPortfolioRepository()
             
             # Initialize application services
             service_factory = ServiceFactory()
@@ -91,15 +94,19 @@ class TradingBotApplication:
             from .application.use_cases import (
                 ConcreteTradingUseCase, ConcretePortfolioUseCase, ConcreteRiskManagementUseCase
             )
-            
+
+            domain_risk_service = DomainRiskManagementService()
             trading_use_case = ConcreteTradingUseCase(
-                trading_repo, data_repo, notification_repo
+                trading_repo,
+                data_repo,
+                ConcreteStrategyService(data_repo),
+                domain_risk_service,
             )
             portfolio_use_case = ConcretePortfolioUseCase(
-                portfolio_repo, performance_repo
+                trading_repo
             )
             risk_use_case = ConcreteRiskManagementUseCase(
-                portfolio_repo, performance_repo
+                trading_repo, domain_risk_service
             )
             
             # Create application services
@@ -237,7 +244,20 @@ class InMemoryTradingRepository(TradingRepository):
     def __init__(self):
         self.orders = {}
         self.positions = {}
+        self.portfolios: dict[str, Portfolio] = {}
+        self._default_portfolio_id: str | None = None
         self.logger = logging.getLogger(__name__)
+
+    def get_portfolio(self, portfolio_id: str) -> Portfolio | None:
+        if portfolio_id == "default" and self._default_portfolio_id is not None:
+            portfolio_id = self._default_portfolio_id
+        return self.portfolios.get(portfolio_id)
+
+    def save_portfolio(self, portfolio: Portfolio) -> bool:
+        self.portfolios[portfolio.id] = portfolio
+        if self._default_portfolio_id is None:
+            self._default_portfolio_id = portfolio.id
+        return True
     
     def save_order(self, order: Any) -> bool:
         """Save order to in-memory storage"""
@@ -661,6 +681,8 @@ def load_configuration() -> Dict[str, Any]:
         try:
             import importlib.util
             spec = importlib.util.spec_from_file_location("config", config_file)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Unable to load configuration module from {config_file}")
             config_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(config_module)
             

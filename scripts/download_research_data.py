@@ -132,7 +132,8 @@ def fetch(symbol, start, end, timeframe, key, host='api.massive.com', now=None,
         frame = frame.sort_index()
         if ((frame.index < lower) | (frame.index >= upper)).any():
             raise ValueError()
-        interval = pd.Timedelta(minutes=multiplier) if span == 'minute' else pd.Timedelta(hours=multiplier)
+        interval = (pd.Timedelta(multiplier, unit='min') if span == 'minute'
+                    else pd.Timedelta(multiplier, unit='h'))
         if (frame.index+interval > now).any():
             raise ValueError()
     except Exception:

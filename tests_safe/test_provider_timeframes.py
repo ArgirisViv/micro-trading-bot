@@ -24,19 +24,21 @@ def setup_cc(monkeypatch,rows):
 
 
 def test_five_minute_crypto_bars_are_not_hourly(monkeypatch):
-    calls=setup_cc(monkeypatch,cc_rows(NOW-pd.Timedelta(days=1,minutes=10),1451))
+    calls=setup_cc(monkeypatch,cc_rows(
+        NOW-pd.Timedelta(1, unit='D')-pd.Timedelta(10, unit='min'),1451))
     bars=cc.get_cryptocompare_data('BTCUSD','5min',1)
     assert bars.index.tz is not None
-    assert (bars.index.to_series().diff().dropna()==pd.Timedelta(minutes=5)).all()
+    assert (bars.index.to_series().diff().dropna()==pd.Timedelta(5, unit='min')).all()
     assert bars.volume.iloc[-1]==5
-    assert bars.index[-1]==NOW-pd.Timedelta(minutes=5)
+    assert bars.index[-1]==NOW-pd.Timedelta(5, unit='min')
     assert 'histominute' in calls[0][0]
     assert 'offline-placeholder' not in calls[0][0]
     assert 'apiKey' not in calls[0][2]
 
 
 def test_exact_quote_currency_not_silently_converted(monkeypatch):
-    calls=setup_cc(monkeypatch,cc_rows(NOW-pd.Timedelta(days=1,hours=2),27,'h'))
+    calls=setup_cc(monkeypatch,cc_rows(
+        NOW-pd.Timedelta(1, unit='D')-pd.Timedelta(2, unit='h'),27,'h'))
     cc.get_cryptocompare_data('BTCUSDT','1h',1)
     assert calls[0][2]['tsym']=='USDT'
     assert calls[0][2]['fsym']=='BTC'
@@ -44,7 +46,8 @@ def test_exact_quote_currency_not_silently_converted(monkeypatch):
 
 
 def test_crypto_history_paginates_until_requested_range(monkeypatch):
-    calls=setup_cc(monkeypatch,cc_rows(NOW-pd.Timedelta(days=3,minutes=10),4331))
+    calls=setup_cc(monkeypatch,cc_rows(
+        NOW-pd.Timedelta(3, unit='D')-pd.Timedelta(10, unit='min'),4331))
     bars=cc.get_cryptocompare_data('BTCUSD','5min',3)
     assert len(calls)>=3
     assert calls[1][2]['toTs']<calls[0][2]['toTs']
@@ -52,7 +55,7 @@ def test_crypto_history_paginates_until_requested_range(monkeypatch):
 
 
 def test_crypto_missing_base_bar_does_not_fabricate_complete_candle(monkeypatch):
-    rows=cc_rows(NOW-pd.Timedelta(days=1,minutes=10),1451)
+    rows=cc_rows(NOW-pd.Timedelta(1, unit='D')-pd.Timedelta(10, unit='min'),1451)
     del rows[-100]
     setup_cc(monkeypatch,rows)
     with pytest.raises(DataError,match='gap'):cc.get_cryptocompare_data('BTCUSD','5min',1)
@@ -74,9 +77,9 @@ def test_stock_exact_timeframe_and_pagination(monkeypatch):
     calls=[]
     def request(url,headers,params,limiter,host):
         calls.append((url,headers,params))
-        if len(calls)==1:return dict(status='OK',results=[stock_row(NOW-pd.Timedelta(minutes=10))],
+        if len(calls)==1:return dict(status='OK',results=[stock_row(NOW-pd.Timedelta(10, unit='min'))],
             next_url='https://api.massive.com/v2/aggs?cursor=next&apiKey=discard-this')
-        return dict(status='OK',results=[stock_row(NOW-pd.Timedelta(minutes=5))])
+        return dict(status='OK',results=[stock_row(NOW-pd.Timedelta(5, unit='min'))])
     monkeypatch.setattr(stock,'get_json',request)
     result=stock.get_polygon_data('AAPL','5min',1)
     assert '/range/5/minute/' in calls[0][0]

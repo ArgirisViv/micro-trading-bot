@@ -8,7 +8,7 @@ from datetime import datetime
 
 from .use_cases import TradingUseCase, PortfolioUseCase, RiskManagementUseCase
 from .dto import (
-    TradingRequest, TradingResponse, PortfolioUpdate,
+    TradingAction, TradingRequest, TradingResponse, PortfolioUpdate,
     SignalRequest, SignalResponse,
     RiskAssessmentRequest, RiskAssessmentResponse
 )
@@ -90,7 +90,7 @@ class ConcreteTradingService(TradingService):
             # Create trading request
             request = TradingRequest(
                 symbol=symbol,
-                action=action,
+                action=TradingAction(action.lower()),
                 quantity=quantity,
                 price=price,
                 **kwargs

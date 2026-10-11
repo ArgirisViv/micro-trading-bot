@@ -73,7 +73,7 @@ def test_initial_warmup_signal_requires_timestamp_provenance():
     data=bars(['2026-01-02 09:30'])
     _,_,m=run(data,[0],initial_signal=1)
     assert m['open_quantity']==0
-    _,_,m=run(data,[0],initial_signal=1,initial_signal_time=data.index[0]-pd.Timedelta(minutes=5))
+    _,_,m=run(data,[0],initial_signal=1,initial_signal_time=data.index[0]-pd.Timedelta(5, unit='min'))
     assert m['open_quantity']>0
 
 
@@ -96,10 +96,10 @@ def test_calendar_rejects_bad_structure(damage):
 
 def test_coarse_or_straddling_bars_are_rejected():
     data=bars(['2026-01-02 09:25'])
-    with pytest.raises(ValueError): session_windows(data.index,calendar(),'1h')
-    with pytest.raises(ValueError): session_windows(data.index,calendar(),'15min')
+    with pytest.raises(ValueError): session_windows(pd.DatetimeIndex(data.index),calendar(),'1h')
+    with pytest.raises(ValueError): session_windows(pd.DatetimeIndex(data.index),calendar(),'15min')
     outside=bars(['2026-01-06 09:30'])
-    with pytest.raises(ValueError): session_windows(outside.index,calendar(),'5min')
+    with pytest.raises(ValueError): session_windows(pd.DatetimeIndex(outside.index),calendar(),'5min')
 
 
 def test_calendar_get_is_paper_only_readonly_and_redacted():
@@ -134,12 +134,12 @@ def test_direct_technical_branch_matches_original_neutral_strategy(monkeypatch):
     from core.enhanced_strategy import EnhancedStrategy
     from scripts.backtesting.offline_backtest import research_signals
     data=bars(pd.date_range('2026-01-02 09:00',periods=100,freq='5min').astype(str))
-    data.close=100+pd.Series(range(100),index=data.index).map(lambda x: (x%15)/10)
-    data.high=data[['open','close']].max(axis=1)+1
-    data.low=data[['open','close']].min(axis=1)-1
+    data['close']=100+pd.Series(range(100),index=data.index).map(lambda x: (x%15)/10)
+    data['high']=data[['open','close']].max(axis=1)+1
+    data['low']=data[['open','close']].min(axis=1)-1
     strategy=EnhancedStrategy(enable_regime_adaptation=False,enable_macro_adaptation=False)
-    strategy._add_ml_predictions=lambda frame:frame.assign(ml_prediction=0,ml_confidence=0.,ml_available=False)
-    strategy._add_fundamental_analysis=lambda frame,symbol:frame.assign(fundamental_score=.5,fundamental_adjustment=1.)
+    strategy._add_ml_predictions=lambda df:df.assign(ml_prediction=0,ml_confidence=0.,ml_available=False)
+    strategy._add_fundamental_analysis=lambda df,symbol:df.assign(fundamental_score=.5,fundamental_adjustment=1.)
     pd.testing.assert_series_equal(research_signals(data,'AAPL'),strategy.apply_strategy(data,'AAPL').signal)
 
 

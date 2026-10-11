@@ -11,6 +11,7 @@ const dashboard = {
   refreshing: false,
   csrf: null,
   runtime: {},
+  bot: {},
 };
 
 const $ = (id) => document.getElementById(id);
@@ -87,20 +88,24 @@ async function postJson(path, payload, authenticated = true) {
 function showAuth(message = "") {
   dashboard.csrf = null;
   $("auth-screen").hidden = false;
+  $("login-form").hidden = false;
+  $("register-form").hidden = true;
   setText("login-error", message);
   $("login-password").focus();
 }
 
 function hideAuth(csrf) {
   dashboard.csrf = csrf;
+  $("login-username").value = "";
   $("login-password").value = "";
+  $("register-form").reset();
   $("auth-screen").hidden = true;
 }
 
 async function checkAuth() {
   try {
     const status = await requestJson("/api/auth/status");
-    if (!status.configured) return showAuth("Configure dashboard credentials in .env.local first.");
+    if (!status.configured && !status.registration_available) return showAuth("Configure DASHBOARD_SESSION_SECRET in .env.local first.");
     if (!status.authenticated) return showAuth();
     hideAuth(status.csrf);
     await refreshDashboard();
@@ -123,6 +128,23 @@ function renderControl(value = {}) {
     : "Hardening stage: new entries are locked pending execution validation. Dashboard monitoring remains available.");
   $("pause-button").disabled = paused;
   $("resume-button").disabled = !paused || locked || staged;
+}
+
+function renderBotControl(value = {}) {
+  dashboard.bot = value;
+  const indicator = $("bot-indicator");
+  const running = value.running === true;
+  const stopping = value.stopping === true;
+  indicator.className = `bot-indicator${running ? stopping ? " stopping" : " running" : ""}`;
+  indicator.textContent = !value.paper_safe
+    ? "PAPER URL REQUIRED"
+    : stopping
+      ? "STOPPING SAFELY"
+      : running
+        ? `RUNNING · PID ${value.pid}`
+        : "OFFLINE";
+  $("bot-start-button").disabled = running || !value.paper_safe;
+  $("bot-stop-button").disabled = !running || stopping;
 }
 
 function showToast(message) {
@@ -495,10 +517,11 @@ async function refreshDashboard() {
   dashboard.refreshing = true;
   $("refresh-button").classList.add("loading");
   try {
-    const [config, overview, backtest, walkforward, runtime, trades, control, paperEquity, execution, cryptoExits] = await Promise.all([
+    const [config, overview, backtest, walkforward, runtime, trades, control, paperEquity, execution, cryptoExits, bot] = await Promise.all([
       requestJson("/api/config"), requestJson("/api/overview"), requestJson("/api/backtest"), requestJson("/api/walkforward"), requestJson("/api/state"), requestJson("/api/trades"), requestJson("/api/control"), requestJson("/api/paper-equity"),
       requestJson("/api/execution"),
       requestJson("/api/crypto-exits"),
+      requestJson("/api/bot"),
     ]);
     renderConfig(config);
     dashboard.backtest = Array.isArray(backtest) ? backtest : [];
@@ -511,6 +534,7 @@ async function refreshDashboard() {
     setText("crypto-exit-status", !cryptoExits.available ? "Crypto exit supervisor: disabled / not initialized."
       : `Crypto exit supervisor: ${cryptoExits.fresh ? "recent poll" : "STALE"} · ${(cryptoExits.issues || []).length} issues. Software exits are not broker-side protection.`);
     renderControl(control);
+    renderBotControl(bot);
     renderMainChart();
     renderPaperChart();
     renderWalkforward();
@@ -530,16 +554,66 @@ function setupControls() {
     $("login-button").disabled = true;
     setText("login-error", "");
     try {
-      const result = await postJson("/api/auth/login", { password: $("login-password").value }, false);
+      const result = await postJson("/api/auth/login", {
+        username: $("login-username").value,
+        password: $("login-password").value,
+      }, false);
       hideAuth(result.csrf);
       await refreshDashboard();
     } catch (error) { setText("login-error", error.message); }
     finally { $("login-button").disabled = false; }
   });
+  $("show-register-button").addEventListener("click", () => {
+    $("login-form").hidden = true;
+    $("register-form").hidden = false;
+    setText("register-error", "");
+    $("register-username").focus();
+  });
+  $("show-login-button").addEventListener("click", () => {
+    $("register-form").hidden = true;
+    $("login-form").hidden = false;
+    setText("login-error", "");
+    $("login-username").focus();
+  });
+  $("register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = $("register-password").value;
+    if (password !== $("register-password-confirm").value) {
+      setText("register-error", "Passwords do not match.");
+      return;
+    }
+    $("register-button").disabled = true;
+    setText("register-error", "");
+    try {
+      const result = await postJson("/api/auth/register", {
+        username: $("register-username").value,
+        password,
+      }, false);
+      hideAuth(result.csrf);
+      await refreshDashboard();
+    } catch (error) { setText("register-error", error.message); }
+    finally { $("register-button").disabled = false; }
+  });
   $("logout-button").addEventListener("click", async () => {
     try { await postJson("/api/auth/logout", {}); } catch (_) { /* session expires automatically */ }
     showAuth();
   });
+  for (const action of ["start", "stop"]) {
+    $(`bot-${action}-button`).addEventListener("click", async () => {
+      $("bot-start-button").disabled = $("bot-stop-button").disabled = true;
+      try {
+        const result = await postJson("/api/bot", { action });
+        renderBotControl(result);
+        showToast(action === "start"
+          ? "Aether AI paper bot started with new entries paused."
+          : "Safe shutdown requested. Existing positions remain open.");
+        await refreshDashboard();
+      } catch (error) {
+        showToast(error.message);
+        await refreshDashboard();
+      }
+    });
+  }
   for (const [id, action] of [["pause-button", "pause"], ["resume-button", "resume"]]) {
     $(id).addEventListener("click", async () => {
       $("pause-button").disabled = $("resume-button").disabled = true;
@@ -594,12 +668,161 @@ function setupNavigation() {
   document.querySelectorAll("main section[id]").forEach((section) => observer.observe(section));
 }
 
+function setupCardMotion() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll(".panel, .metric-card").forEach((card) => {
+    card.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse") return;
+      const bounds = card.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width;
+      const y = (event.clientY - bounds.top) / bounds.height;
+      card.style.setProperty("--spot-x", `${x * 100}%`);
+      card.style.setProperty("--spot-y", `${y * 100}%`);
+    });
+    card.addEventListener("pointerleave", () => {
+      card.style.removeProperty("--spot-x");
+      card.style.removeProperty("--spot-y");
+    });
+  });
+}
+
+function setupFx() {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const cards = document.querySelectorAll(".panel, .metric-card");
+  if (!reduce) {
+    cards.forEach((el, i) => {
+      el.style.setProperty("--d", `${Math.min(i, 12) * 0.05}s`);
+      el.classList.add("reveal");
+    });
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+    }), { threshold: 0.05 });
+    cards.forEach((el) => io.observe(el));
+    window.setTimeout(() => cards.forEach((el) => el.classList.add("in")), 2500);
+    window.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
+      document.body.style.setProperty("--cx", `${e.clientX}px`);
+      document.body.style.setProperty("--cy", `${e.clientY}px`);
+    });
+    document.addEventListener("pointerdown", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      const s = document.createElement("span");
+      s.className = "ripple";
+      s.style.left = `${e.clientX - r.left}px`;
+      s.style.top = `${e.clientY - r.top}px`;
+      b.appendChild(s);
+      s.addEventListener("animationend", () => s.remove());
+    });
+  }
+}
+
+function setupMarketBackground() {
+  const shell = document.querySelector(".app-shell");
+  if (!shell) return;
+  const canvas = document.createElement("canvas");
+  canvas.id = "market-bg";
+  canvas.setAttribute("aria-hidden", "true");
+  document.body.insertBefore(canvas, shell);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const step = 24;
+  const bodyWidth = 9;
+  let width = 0, height = 0, scroll = 0, last = 0, price = 0, candles = [];
+
+  function nextCandle() {
+    const open = price;
+    const close = open - open * 0.04 + (Math.random() - 0.5) * 0.34;
+    price = close;
+    return {
+      o: open, c: close,
+      h: Math.max(open, close) + Math.random() * 0.12,
+      l: Math.min(open, close) - Math.random() * 0.12,
+    };
+  }
+  const yOf = (value) => height * 0.58 - value * height * 0.28;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth; height = window.innerHeight;
+    canvas.width = width * dpr; canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const needed = Math.ceil(width / step) + 4;
+    while (candles.length < needed) candles.push(nextCandle());
+    draw(performance.now());
+  }
+
+  function draw(time) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(177, 139, 244, .05)";
+    ctx.beginPath();
+    for (let gy = height % 84; gy < height; gy += 84) { ctx.moveTo(0, gy); ctx.lineTo(width, gy); }
+    for (let gx = -(scroll % (step * 4)); gx < width; gx += step * 4) { ctx.moveTo(gx, 0); ctx.lineTo(gx, height); }
+    ctx.stroke();
+
+    candles.forEach((candle, index) => {
+      const x = index * step - scroll;
+      if (x < -step || x > width + step) return;
+      const up = candle.c >= candle.o;
+      ctx.strokeStyle = up ? "rgba(196, 160, 255, .22)" : "rgba(116, 86, 190, .2)";
+      ctx.fillStyle = up ? "rgba(196, 160, 255, .13)" : "rgba(116, 86, 190, .12)";
+      ctx.beginPath(); ctx.moveTo(x, yOf(candle.h)); ctx.lineTo(x, yOf(candle.l)); ctx.stroke();
+      const top = yOf(Math.max(candle.o, candle.c));
+      const bodyHeight = Math.max(2, Math.abs(yOf(candle.o) - yOf(candle.c)));
+      ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyHeight);
+      ctx.strokeRect(x - bodyWidth / 2, top, bodyWidth, bodyHeight);
+    });
+
+    const points = candles.map((_, index) => {
+      const slice = candles.slice(Math.max(0, index - 5), index + 1);
+      const average = slice.reduce((sum, item) => sum + item.c, 0) / slice.length;
+      return [index * step - scroll, yOf(average)];
+    });
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, "rgba(160, 119, 237, 0)");
+    gradient.addColorStop(0.5, "rgba(214, 186, 255, .5)");
+    gradient.addColorStop(1, "rgba(160, 119, 237, .12)");
+    ctx.strokeStyle = gradient; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length - 1; i += 1) {
+      ctx.quadraticCurveTo(points[i][0], points[i][1], (points[i][0] + points[i + 1][0]) / 2, (points[i][1] + points[i + 1][1]) / 2);
+    }
+    ctx.stroke();
+
+    const edge = points.filter(([x]) => x <= width - 40).pop();
+    if (edge) {
+      const pulse = reduce ? 0 : (Math.sin(time / 600) + 1) / 2;
+      ctx.fillStyle = "rgba(233, 214, 255, .75)";
+      ctx.beginPath(); ctx.arc(edge[0], edge[1], 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(196, 160, 255, ${0.35 - pulse * 0.25})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(edge[0], edge[1], 6 + pulse * 9, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  function frame(time) {
+    window.requestAnimationFrame(frame);
+    if (document.hidden || time - last < 33) return;
+    const delta = Math.min(0.1, (time - last) / 1000);
+    last = time;
+    scroll += delta * 14;
+    if (scroll >= step) { scroll -= step; candles.shift(); candles.push(nextCandle()); }
+    draw(time);
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+  if (!reduce) window.requestAnimationFrame(frame);
+}
+
 function updateClock() {
   setText("utc-clock", new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date()));
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  setupControls(); setupTheme(); setupNavigation(); updateClock(); checkAuth();
+  setupControls(); setupTheme(); setupNavigation(); setupCardMotion(); setupFx(); setupMarketBackground(); updateClock(); checkAuth();
   window.setInterval(updateClock, 1000);
   window.setInterval(() => { if (dashboard.csrf) refreshDashboard(); }, 60000);
 });

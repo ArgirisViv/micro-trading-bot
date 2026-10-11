@@ -10,6 +10,16 @@ from .entities import Order, Position, TradingSignal, Portfolio
 
 class TradingRepository(ABC):
     """Abstract trading repository interface"""
+
+    @abstractmethod
+    def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
+        """Get a portfolio by ID."""
+        pass
+
+    @abstractmethod
+    def save_portfolio(self, portfolio: Portfolio) -> bool:
+        """Save a portfolio."""
+        pass
     
     @abstractmethod
     def save_order(self, order: Order) -> bool:

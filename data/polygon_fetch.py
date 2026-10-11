@@ -20,7 +20,7 @@ def get_polygon_data(symbol,timeframe=TIMEFRAME,lookback=LOOKBACK):
     if unit==86400:raise DataError('Stock daily session-close policy not implemented; use intraday')
     host=os.getenv('STOCK_DATA_HOST','api.massive.com')
     if host not in {'api.massive.com','api.polygon.io'}:raise DataError('Unsupported stock data host')
-    now=utc_now();start=now-pd.Timedelta(days=lookback)
+    now=utc_now();start=now-pd.Timedelta(lookback, unit='D')
     url=f'https://{host}/v2/aggs/ticker/{symbol}/range/{multiplier}/{span}/{int(start.timestamp()*1000)}/{int(now.timestamp()*1000)}'
     headers={'Authorization':'Bearer '+POLYGON_API_KEY}
     params=dict(adjusted='true',sort='asc',limit=50000);seen=set();rows=[]

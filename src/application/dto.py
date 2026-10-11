@@ -44,8 +44,9 @@ class TradingRequest:
         if not self.symbol or not self.symbol.strip():
             raise ValueError("Symbol cannot be empty")
         
-        if self.action in [TradingAction.BUY, TradingAction.SELL] and self.quantity is None:
-            raise ValueError("Quantity is required for BUY/SELL actions")
+        if (self.action in [TradingAction.BUY, TradingAction.SELL] and
+                self.quantity is None and self.risk_per_trade is None):
+            raise ValueError("Quantity or risk_per_trade is required for BUY/SELL actions")
         
         if self.quantity is not None and self.quantity <= 0:
             raise ValueError("Quantity must be positive")

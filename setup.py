@@ -19,6 +19,9 @@ setup(
     packages=find_packages(),
     py_modules=["config", "runtime_control"],
     install_requires=requirements,
-    extras_require={"test": ["pytest>=7.4,<9"]},
+    extras_require={
+        "test": ["pytest>=7.4,<9"],
+        "postgresql": ["psycopg2-binary>=2.9,<3"],
+    },
     package_data={"webapp": ["static/*.html", "static/assets/*.css", "static/assets/*.js"]},
 )

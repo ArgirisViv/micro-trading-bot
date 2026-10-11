@@ -13,13 +13,13 @@ Combines ALL advanced features:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Tuple, Optional, List
-from .enhanced_indicators import add_enhanced_indicators, generate_enhanced_signals
-from .enhanced_strategy import EnhancedStrategy
-from .advanced_risk import AdvancedRiskManager
-from .market_regime import MarketRegimeDetector, detect_market_regime, adapt_strategy_to_regime
-from .ml_model import create_features, load_model
-from .fundamentals import fetch_fundamentals
+from typing import Any, Dict, List, Tuple
+from core.enhanced_indicators import add_enhanced_indicators, generate_enhanced_signals
+from core.enhanced_strategy import EnhancedStrategy
+from core.advanced_risk import AdvancedRiskManager, calculate_volatility
+from core.market_regime import MarketRegimeDetector
+from core.ml_model import create_features, load_model
+from core.fundamentals import fetch_fundamentals
 
 class UltimateStrategy:
     """
@@ -41,10 +41,10 @@ class UltimateStrategy:
         
     def apply_ultimate_strategy(self, 
                               data: pd.DataFrame, 
-                              symbol: str = None,
+                              symbol: str | None = None,
                               portfolio_value: float = 100000.0,
-                              current_positions: Dict = None,
-                              trade_history: List[Dict] = None) -> Dict:
+                              current_positions: Dict[str, Any] | None = None,
+                              trade_history: List[Dict[str, Any]] | None = None) -> Dict[str, Any]:
         """
         Apply the ultimate strategy with all features
         
@@ -62,7 +62,7 @@ class UltimateStrategy:
         ml_analysis = self._apply_ml_analysis(df)
         
         # 4. FUNDAMENTAL ANALYSIS
-        fundamental_analysis = self._apply_fundamental_analysis(df, symbol)
+        fundamental_analysis = self._apply_fundamental_analysis(symbol)
         
         # 5. RISK MANAGEMENT
         risk_analysis = self._apply_risk_management(
@@ -77,7 +77,7 @@ class UltimateStrategy:
         
         # 7. POSITION SIZING RECOMMENDATIONS
         position_recommendations = self._calculate_position_recommendations(
-            df, symbol, portfolio_value, risk_analysis, regime_analysis
+            df, risk_analysis, regime_analysis
         )
         
         # 8. COMPREHENSIVE SUMMARY
@@ -91,13 +91,16 @@ class UltimateStrategy:
     
     def _detect_and_adapt_regime(self, df: pd.DataFrame) -> Dict:
         """Detect market regime and adapt strategy parameters"""
-        regime = detect_market_regime(df)
-        adapted_params = adapt_strategy_to_regime(regime)
+        regime = self.regime_detector.detect_market_regime(df)
+        adapted_params = self.regime_detector.get_regime_adaptation(regime)
+        adapted_params['entry_threshold'] = max(
+            adapted_params['entry_threshold'], self.confidence_threshold
+        )
         
         return {
             'regime': regime,
             'adapted_params': adapted_params,
-            'summary': self.regime_detector.get_regime_summary(regime)
+            'summary': self.regime_detector.get_regime_summary(df)
         }
     
     def _apply_enhanced_technical_analysis(self, df: pd.DataFrame) -> Dict:
@@ -125,7 +128,7 @@ class UltimateStrategy:
             X, _ = create_features(df)
             model = load_model()
             
-            if not X.empty and hasattr(model, 'predict_proba'):
+            if model is not None and not X.empty and hasattr(model, 'predict_proba'):
                 predictions = model.predict(X)
                 proba = model.predict_proba(X)
                 confidence = np.max(proba, axis=1)
@@ -156,7 +159,7 @@ class UltimateStrategy:
                 'error': str(e)
             }
     
-    def _apply_fundamental_analysis(self, df: pd.DataFrame, symbol: str) -> Dict:
+    def _apply_fundamental_analysis(self, symbol: str | None) -> Dict[str, Any]:
         """Apply fundamental analysis overlay"""
         if not symbol or self._is_crypto(symbol):
             return {
@@ -195,20 +198,20 @@ class UltimateStrategy:
     
     def _apply_risk_management(self, 
                               df: pd.DataFrame, 
-                              symbol: str, 
+                              symbol: str | None, 
                               portfolio_value: float,
-                              current_positions: Dict,
-                              trade_history: List[Dict]) -> Dict:
+                              current_positions: Dict[str, Any] | None,
+                              trade_history: List[Dict[str, Any]] | None) -> Dict[str, Any]:
         """Apply advanced risk management"""
         
         # Calculate volatility
         returns = df['close'].pct_change().dropna()
-        volatility = self.risk_manager._calculate_volatility(returns)
+        volatility = calculate_volatility(returns)
         
         # Calculate portfolio heat
         portfolio_heat = self.risk_manager.calculate_portfolio_heat(
             current_positions or {}, 
-            {symbol: df['close'].iloc[-1]}, 
+            {symbol: df['close'].iloc[-1]} if symbol else {},
             portfolio_value
         )
         
@@ -216,18 +219,18 @@ class UltimateStrategy:
         var_analysis = self.risk_manager.calculate_var(returns)
         
         # Get win rate from trade history
-        win_rate, avg_win, avg_loss = self._calculate_performance_metrics(trade_history)
+        win_rate, avg_win, avg_loss = self._calculate_performance_metrics(trade_history or [])
         
         # Calculate optimal position size
         current_price = df['close'].iloc[-1]
         position_size_analysis = self.risk_manager.calculate_optimal_position_size(
-            symbol, current_price, portfolio_value, volatility, 
+            current_price, portfolio_value, volatility,
             win_rate, avg_win, avg_loss, portfolio_heat
         )
         
         # Risk assessment
         risk_summary = self.risk_manager.get_risk_summary(
-            portfolio_heat, volatility, self._get_recent_performance(trade_history)
+            portfolio_heat, volatility, self._get_recent_performance(trade_history or [])
         )
         
         return {
@@ -256,17 +259,15 @@ class UltimateStrategy:
         
         # Get regime-adapted parameters
         regime_params = regime_analysis['adapted_params']
-        entry_threshold = regime_params['entry_threshold']
-        
         # Calculate composite signal
         composite_signal = self._calculate_composite_signal(
             technical_signal, ml_signal, ml_confidence, 
-            fundamental_analysis, risk_analysis, regime_params
+            fundamental_analysis, risk_analysis
         )
         
         # Apply regime-specific adjustments
         final_signal = self._apply_regime_adjustments(
-            composite_signal, regime_params, risk_analysis
+            composite_signal, regime_params
         )
         
         return {
@@ -286,8 +287,7 @@ class UltimateStrategy:
                                    ml_signal: int,
                                    ml_confidence: float,
                                    fundamental_analysis: Dict,
-                                   risk_analysis: Dict,
-                                   regime_params: Dict) -> float:
+                                   risk_analysis: Dict) -> float:
         """Calculate composite signal from all factors"""
         
         # Base weights
@@ -318,8 +318,7 @@ class UltimateStrategy:
     
     def _apply_regime_adjustments(self, 
                                  composite_signal: float,
-                                 regime_params: Dict,
-                                 risk_analysis: Dict) -> int:
+                                 regime_params: Dict) -> int:
         """Apply regime-specific adjustments to final signal"""
         
         # Get regime parameters
@@ -339,8 +338,6 @@ class UltimateStrategy:
     
     def _calculate_position_recommendations(self,
                                           df: pd.DataFrame,
-                                          symbol: str,
-                                          portfolio_value: float,
                                           risk_analysis: Dict,
                                           regime_analysis: Dict) -> Dict:
         """Calculate optimal position sizing recommendations"""
@@ -593,10 +590,10 @@ class UltimateStrategy:
         return '/' in symbol or symbol.endswith('USD') or symbol.endswith('USDT')
 
 def apply_ultimate_strategy(data: pd.DataFrame, 
-                           symbol: str = None,
+                           symbol: str | None = None,
                            portfolio_value: float = 100000.0,
-                           current_positions: Dict = None,
-                           trade_history: List[Dict] = None) -> Dict:
+                           current_positions: Dict[str, Any] | None = None,
+                           trade_history: List[Dict[str, Any]] | None = None) -> Dict[str, Any]:
     """
     Convenience function to apply the ultimate strategy
     """

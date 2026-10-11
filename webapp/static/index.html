@@ -4,29 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Professional paper-trading monitoring, performance and risk dashboard">
-  <title>Orbit · Trading Operations</title>
+  <title>Aether AI · Intelligent Paper Trading</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/aether-logo.svg">
   <link rel="stylesheet" href="/assets/style.css">
-  <link rel="stylesheet" href="/assets/terminal.css">
+  <link rel="stylesheet" href="/assets/terminal.css?v=aether-ai-12">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Μετάβαση στο περιεχόμενο</a>
   <div class="auth-screen" id="auth-screen" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <form class="auth-card" id="login-form">
-      <span class="auth-mark">ORBIT / PAPER OPERATIONS</span>
-      <h1 id="auth-title">Your trading<br>workspace.</h1>
+      <span class="auth-mark">AETHER AI / PAPER OPERATIONS</span>
+      <h1 id="auth-title">Your intelligent<br>trading workspace.</h1>
       <p>Sign in to monitor the paper account and control new strategy entries.</p>
+      <label for="login-username">Username <span class="auth-optional">(optional for legacy password)</span></label>
+      <input id="login-username" type="text" autocomplete="username" maxlength="32" placeholder="Your username">
       <label for="login-password">Dashboard password</label>
       <input id="login-password" type="password" autocomplete="current-password" required minlength="12" placeholder="Enter your password">
       <button type="submit" id="login-button">Unlock dashboard</button>
+      <button type="button" class="auth-switch" id="show-register-button">Create a local account</button>
       <small id="login-error" role="alert" aria-live="polite"></small>
       <span class="auth-foot">Local paper-trading workspace · No live-money controls</span>
+    </form>
+    <form class="auth-card" id="register-form" hidden>
+      <span class="auth-mark">AETHER AI / PAPER OPERATIONS</span>
+      <h1>Create your intelligent<br>workspace.</h1>
+      <p>Create a local account to access this paper-trading dashboard.</p>
+      <label for="register-username">Username</label>
+      <input id="register-username" type="text" autocomplete="username" required minlength="3" maxlength="32" placeholder="3-32 letters, numbers or . _ -">
+      <label for="register-password">Password</label>
+      <input id="register-password" type="password" autocomplete="new-password" required minlength="12" placeholder="At least 12 characters">
+      <label for="register-password-confirm">Confirm password</label>
+      <input id="register-password-confirm" type="password" autocomplete="new-password" required minlength="12" placeholder="Repeat your password">
+      <button type="submit" id="register-button">Create account</button>
+      <button type="button" class="auth-switch" id="show-login-button">I already have an account</button>
+      <small id="register-error" role="alert" aria-live="polite"></small>
+      <span class="auth-foot">Accounts remain on this computer only.</span>
     </form>
   </div>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar" aria-label="Κύρια πλοήγηση">
-      <a class="brand" href="#overview" aria-label="Orbit αρχική">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="brand-copy"><strong>ORBIT<span class="brand-version"> / 01</span></strong><small>EXECUTION WORKSPACE</small></span>
+      <a class="brand" href="#overview" aria-label="Aether AI αρχική">
+        <span class="brand-mark aether-logo" aria-hidden="true"><img src="/assets/aether-logo.svg" alt="" width="42" height="42"></span>
+        <span class="brand-copy"><strong>AETHER<span class="brand-version"> AI</span></strong><small>INTELLIGENT PAPER TRADING</small></span>
       </a>
       <div class="workspace-label">WORKSPACE</div>
       <nav class="nav-list">
@@ -47,7 +66,7 @@
     <div class="app-main">
       <header class="topbar">
         <button class="icon-button menu-button" id="menu-button" aria-label="Άνοιγμα πλοήγησης" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-        <div class="top-title"><span class="breadcrumb">ORBIT TERMINAL <b>/</b> PAPER PORTFOLIO</span><h1>Portfolio workspace<span class="terminal-tag">PAPER</span></h1></div>
+        <div class="top-title"><span class="breadcrumb">AETHER AI TERMINAL <b>/</b> PAPER PORTFOLIO</span><h1>Intelligent portfolio<span class="terminal-tag">PAPER</span></h1></div>
         <div class="topbar-actions">
           <div class="market-clock"><span>UTC</span><strong id="utc-clock">--:--:--</strong></div>
           <button class="icon-button" id="theme-button" aria-label="Εναλλαγή θέματος"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
@@ -63,11 +82,11 @@
             <div class="updated-line"><span class="status-orb" id="header-status-orb"></span><strong id="header-status">Connecting</strong><small>Updated <time id="last-updated">—</time></small></div>
           </div>
           <div class="metric-strip">
-            <article class="metric-card hero-metric"><div class="metric-label"><span>Total return</span><span class="metric-glyph positive">↗</span></div><strong id="metric-return">—</strong><small id="backtest-range">Awaiting backtest history</small></article>
-            <article class="metric-card"><div class="metric-label"><span>Trade win rate</span><span class="verified-dot"></span></div><strong id="metric-win-rate">—</strong><small id="win-rate-source">Requires completed trades</small></article>
-            <article class="metric-card"><div class="metric-label"><span>Max drawdown</span><span class="metric-glyph negative">↓</span></div><strong id="metric-drawdown">—</strong><small>Worst peak-to-trough decline</small></article>
-            <article class="metric-card"><div class="metric-label"><span>Profit factor</span><span class="metric-glyph violet">PF</span></div><strong id="metric-profit-factor">—</strong><small>Gross profit / gross loss</small></article>
-            <article class="metric-card"><div class="metric-label"><span>Paper equity</span><span class="metric-glyph blue">$</span></div><strong id="metric-growth">—</strong><small id="equity-daily-pnl">Awaiting account state</small></article>
+            <article class="metric-card hero-metric"><div class="metric-label"><span>Total return</span><span class="metric-glyph positive" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 16l5-5 3.5 3.5L20 7M15 7h5v5"/></svg></span></div><strong id="metric-return">—</strong><small id="backtest-range">Awaiting backtest history</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Trade win rate</span><span class="metric-glyph violet" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8.5 12.2l2.4 2.4 4.6-5"/></svg></span></div><strong id="metric-win-rate">—</strong><small id="win-rate-source">Requires completed trades</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Max drawdown</span><span class="metric-glyph negative" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8l5 5 3.5-3.5L20 17M15 17h5v-5"/></svg></span></div><strong id="metric-drawdown">—</strong><small>Worst peak-to-trough decline</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Profit factor</span><span class="metric-glyph violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M12 19V5M19 19v-7"/></svg></span></div><strong id="metric-profit-factor">—</strong><small>Gross profit / gross loss</small></article>
+            <article class="metric-card"><div class="metric-label"><span>Paper equity</span><span class="metric-glyph blue" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="3"/><circle cx="12" cy="12" r="2.3"/></svg></span></div><strong id="metric-growth">—</strong><small id="equity-daily-pnl">Awaiting account state</small></article>
           </div>
 
           <div class="overview-workspace">
@@ -76,10 +95,13 @@
               <p id="control-message">Checking entry policy…</p><small id="control-updated">Last change: —</small>
             </div>
             <div class="operator-actions"><strong class="control-indicator" id="control-indicator">CHECKING</strong>
+              <strong class="bot-indicator" id="bot-indicator">OFFLINE</strong>
+              <button class="control-button bot-start" id="bot-start-button" type="button" disabled>Start Aether AI bot</button>
+              <button class="control-button bot-stop" id="bot-stop-button" type="button" disabled>Stop Aether AI bot</button>
               <button class="control-button pause" id="pause-button" type="button" disabled>Pause entries</button>
               <button class="control-button resume" id="resume-button" type="button" disabled>Allow entries</button>
             </div>
-            <div class="execution-note"><span>EXECUTION BOUNDARY</span><p>Paper account only. Entry policy does not stop the engine or liquidate existing positions.</p></div>
+            <div class="execution-note"><span>EXECUTION BOUNDARY</span><p>Start launches only a local paper-trading process with entries paused. Stop safely exits that process and never closes existing positions.</p></div>
           </article>
 
           <article class="panel paper-chart-panel" aria-labelledby="paper-chart-title">
@@ -153,7 +175,7 @@
           <div class="config-grid" id="config-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
         </section>
       </main>
-      <footer><span><b>ORBIT</b> · Micro Trading Bot</span><span>Paper-trading research environment · Not financial advice</span></footer>
+      <footer><span><b>AETHER AI</b> · Micro Trading Bot</span><span>AI-powered paper-trading research environment · Not financial advice</span></footer>
     </div>
   </div>
   <div class="mobile-overlay" id="mobile-overlay"></div>

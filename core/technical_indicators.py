@@ -1,4 +1,4 @@
-# indicators.py
+# technical_indicators.py
 
 import pandas as pd
 from config import SMA_FAST, SMA_SLOW, RSI_PERIOD, ATR_PERIOD
@@ -30,4 +30,3 @@ def add_indicators(df: pd.DataFrame,
     df["rsi"]      = compute_rsi(df["close"], rsi_period)
     df["atr"]      = compute_atr(df, atr_period)
     return df
-

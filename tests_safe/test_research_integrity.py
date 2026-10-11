@@ -36,7 +36,9 @@ def test_training_purges_boundary_and_publishes_holdout_metadata(tmp_path):
     metadata = json.loads((tmp_path / 'own_model.joblib.json').read_text())
     assert metadata['purged_rows'] == 1
     assert metadata['training_end'] < metadata['holdout_start']
-    assert load_model(path).orbit_schema == ['return','sma_fast','sma_slow','rsi']
+    model = load_model(path)
+    assert model is not None
+    assert getattr(model, 'orbit_schema', None) == ['return','sma_fast','sma_slow','rsi']
 
 
 def test_insufficient_training_does_not_save_dummy(tmp_path):
@@ -64,8 +66,8 @@ def test_signal_fills_next_open_not_previous_close():
 
 def test_both_levels_touched_stop_first():
     bars = frame([100,100])
-    bars.iloc[1,bars.columns.get_loc('low')] = 95
-    bars.iloc[1,bars.columns.get_loc('high')] = 110
+    bars.loc[bars.index[1], 'low'] = 95
+    bars.loc[bars.index[1], 'high'] = 110
     _,trades,metrics = simulate(bars,pd.Series([1,0],index=bars.index),
         BacktestPolicy(fee_bps=0,slippage_bps=0))
     assert trades.reason.iloc[0] == 'stop_loss'

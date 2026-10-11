@@ -36,8 +36,8 @@ def apply_ultimate_strategy(data, symbol=None):
 
 # Market regime detection
 def detect_market_regime(data):
-    from .market_regime import detect_market_regime
-    return detect_market_regime(data)
+    from .market_regime import MarketRegimeDetector
+    return MarketRegimeDetector().detect_market_regime(data)
 
 def get_regime_adaptations(regime):
     from .market_regime import MarketRegimeDetector
@@ -82,12 +82,16 @@ def get_hybrid_portfolio_summary(signals):
 
 # Risk management
 def calculate_position_size(account_value, risk_per_trade, stop_loss_pct):
-    from .risk_management import calculate_position_size
-    return calculate_position_size(account_value, risk_per_trade, stop_loss_pct)
+    if account_value <= 0 or not 0 < risk_per_trade <= 1 or not 0 < stop_loss_pct <= 1:
+        raise ValueError("account_value must be positive and risk percentages must be in (0, 1]")
+    return account_value * risk_per_trade / stop_loss_pct
 
-def check_correlation_limits(positions, new_symbol, max_correlation=0.7):
-    from .risk_management import check_correlation_limits
-    return check_correlation_limits(positions, new_symbol, max_correlation)
+def check_correlation_limits(positions, new_symbol, max_correlation=0.7, price_data=None):
+    if price_data is None:
+        raise ValueError("price_data is required to evaluate position correlations")
+    from .risk_management import PortfolioRiskManager, RiskLimits
+    manager = PortfolioRiskManager(RiskLimits(max_correlation=max_correlation))
+    return manager.check_correlation_limits(new_symbol, positions, price_data)
 
 # Data functions
 def get_live_data(symbol):

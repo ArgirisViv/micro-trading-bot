@@ -23,7 +23,7 @@ class RiskConfig:
 class AdvancedRiskManager:
     """Advanced risk management system for portfolio analysis"""
     
-    def __init__(self, config: RiskConfig = None):
+    def __init__(self, config: Optional[RiskConfig] = None):
         self.config = config or RiskConfig()
         self.portfolio_value = 100000
         self.logger = logging.getLogger(__name__)
@@ -123,7 +123,7 @@ class AdvancedRiskManager:
             self.logger.error(f"Error calculating correlation matrix: {e}")
             return pd.DataFrame()
     
-    def calculate_var(self, positions: Dict, confidence: float = None) -> Dict:
+    def calculate_var(self, positions: Dict, confidence: Optional[float] = None) -> Dict:
         """Calculate Value at Risk (VaR) for portfolio"""
         try:
             if not positions:

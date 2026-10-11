@@ -215,10 +215,10 @@ class Position:
     def unrealized_pnl_percentage(self) -> Percentage:
         """Calculate unrealized P&L percentage"""
         if self.entry_value.amount == 0:
-            return Percentage(0.0)
+            return Percentage(Decimal("0"))
         
         pnl_pct = (self.unrealized_pnl.amount / self.entry_value.amount) * 100
-        return Percentage(pnl_pct)
+        return Percentage(Decimal(str(pnl_pct)))
     
     def update_price(self, new_price: Money):
         """Update current price"""
@@ -289,7 +289,7 @@ class Portfolio:
     @property
     def total_positions_value(self) -> Money:
         """Calculate total value of all positions"""
-        return Money(sum(pos.market_value.amount for pos in self.positions))
+        return Money(sum((pos.market_value.amount for pos in self.positions), Decimal("0")))
     
     @property
     def total_value(self) -> Money:
@@ -299,16 +299,28 @@ class Portfolio:
     @property
     def total_unrealized_pnl(self) -> Money:
         """Calculate total unrealized P&L"""
-        return Money(sum(pos.unrealized_pnl.amount for pos in self.positions))
+        return Money(sum((pos.unrealized_pnl.amount for pos in self.positions), Decimal("0")))
     
     @property
     def total_unrealized_pnl_percentage(self) -> Percentage:
         """Calculate total unrealized P&L percentage"""
         if self.total_value.amount == 0:
-            return Percentage(0.0)
+            return Percentage(Decimal("0"))
         
         pnl_pct = (self.total_unrealized_pnl.amount / self.total_value.amount) * 100
-        return Percentage(pnl_pct)
+        return Percentage(Decimal(str(pnl_pct)))
+
+    @property
+    def position_count(self) -> int:
+        return len(self.positions)
+
+    @property
+    def open_orders_count(self) -> int:
+        return sum(order.status in {OrderStatus.PENDING, OrderStatus.PARTIALLY_FILLED}
+                   for order in self.orders)
+
+    def get_position_by_symbol(self, symbol: str) -> Position | None:
+        return next((position for position in self.positions if position.symbol == symbol), None)
     
     def add_position(self, position: Position):
         """Add a new position to the portfolio"""

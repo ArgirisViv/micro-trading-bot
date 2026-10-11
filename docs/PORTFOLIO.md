@@ -1,4 +1,4 @@
-# Portfolio presentation
+﻿# Portfolio presentation
 
 ## Suggested LinkedIn project title
 
@@ -21,6 +21,7 @@ Python paper-trading research bot with Alpaca paper-only order validation, techn
 
 ## Current evidence
 
-- 41 deterministic offline tests pass locally; no real paper order was placed during verification.
-- Flask endpoints returned HTTP 200 in local smoke checks.
-- Docker build and authenticated broker integration were not executed in this environment.
+- Deterministic offline tests; no real paper order was placed during verification.
+- Flask endpoints and the Docker stack (dashboard + paper-trader) were smoke-checked locally and report healthy.
+- Authenticated broker integration has not been validated end to end.
+

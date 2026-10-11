@@ -20,17 +20,27 @@ def read_control(path: Path | None = None) -> dict:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or type(raw.get("paused")) is not bool:
             raise ValueError("Invalid control document")
-        return {"paused": raw["paused"], "updated_at": raw.get("updated_at")}
+        return {
+            "paused": raw["paused"],
+            "stop_requested": raw.get("stop_requested") is True,
+            "updated_at": raw.get("updated_at"),
+        }
     except (FileNotFoundError, OSError, ValueError, UnicodeError):
-        return {"paused": True, "updated_at": None}
+        return {"paused": True, "stop_requested": False, "updated_at": None}
 
 
-def write_control(*, paused: bool, path: Path | None = None) -> dict:
+def write_control(*, paused: bool, stop_requested: bool = False, path: Path | None = None) -> dict:
     if type(paused) is not bool:
         raise ValueError("paused must be boolean")
+    if type(stop_requested) is not bool:
+        raise ValueError("stop_requested must be boolean")
     path = path or control_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    value = {"paused": paused, "updated_at": datetime.now(timezone.utc).isoformat()}
+    value = {
+        "paused": paused,
+        "stop_requested": stop_requested,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
     temp_name = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
@@ -45,3 +55,8 @@ def write_control(*, paused: bool, path: Path | None = None) -> dict:
         if temp_name and os.path.exists(temp_name):
             os.unlink(temp_name)
     return value
+
+
+def request_stop(path: Path | None = None) -> dict:
+    """Pause entries and ask the local paper loop to exit after its current safe step."""
+    return write_control(paused=True, stop_requested=True, path=path)

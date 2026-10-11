@@ -53,6 +53,30 @@ def test_wrong_password_cannot_unlock(client):
     assert unauthenticated.get("/api/auth/status").get_json()["authenticated"] is False
 
 
+def test_user_can_register_and_then_login(client, monkeypatch, tmp_path):
+    accounts_db = tmp_path / "dashboard-users.sqlite3"
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS_DB", str(accounts_db))
+    unauthenticated = server.app.test_client()
+    headers = {"X-Requested-With": "Orbit"}
+    registered = unauthenticated.post(
+        "/api/auth/register",
+        json={"username": "orbit.operator", "password": "correct-horse-paper-456"},
+        headers=headers,
+    )
+    assert registered.status_code == 201
+    assert registered.get_json()["authenticated"] is True
+    assert accounts_db.exists()
+    csrf_headers = {**headers, "X-Orbit-CSRF": registered.get_json()["csrf"]}
+    assert unauthenticated.post("/api/auth/logout", json={}, headers=csrf_headers).status_code == 200
+    logged_in = unauthenticated.post(
+        "/api/auth/login",
+        json={"username": "orbit.operator", "password": "correct-horse-paper-456"},
+        headers=headers,
+    )
+    assert logged_in.status_code == 200
+    assert logged_in.get_json()["username"] == "orbit.operator"
+
+
 def test_repeated_wrong_passwords_are_throttled(client, monkeypatch):
     monkeypatch.setattr(server, "_login_attempts", server.defaultdict(server.deque))
     unauthenticated = server.app.test_client()

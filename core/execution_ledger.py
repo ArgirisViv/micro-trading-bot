@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 SCHEMA_VERSION = 2
 TERMINAL = {'filled', 'canceled', 'expired', 'rejected'}
@@ -142,11 +143,12 @@ class ExecutionLedger:
         """Commit intent before POST. Returns (record, created); existing = NO POST."""
         normalized_symbol(symbol)
         if asset_class not in {'stocks','crypto'}:raise LedgerError('Invalid asset class')
+        crypto_policy = exit_policy if isinstance(exit_policy, dict) else None
         if asset_class=='crypto':
-            if not isinstance(exit_policy,dict) or set(exit_policy)!={'stop_pct','take_pct','trail_pct','partial_pct','partial_ratio'}:
+            if crypto_policy is None or set(crypto_policy)!={'stop_pct','take_pct','trail_pct','partial_pct','partial_ratio'}:
                 raise LedgerError('Persisted crypto exit policy required')
-            if any(not 0<amount(value,positive=True)<1 for value in exit_policy.values()):raise LedgerError('Invalid crypto exit policy')
-            if amount(exit_policy['partial_pct'])>=amount(exit_policy['take_pct']):raise LedgerError('Invalid partial threshold')
+            if any(not 0<amount(value,positive=True)<1 for value in crypto_policy.values()):raise LedgerError('Invalid crypto exit policy')
+            if amount(crypto_policy['partial_pct'])>=amount(crypto_policy['take_pct']):raise LedgerError('Invalid partial threshold')
         qty, reference_price = amount(qty, positive=True), amount(reference_price, positive=True)
         timestamp = utc_timestamp(bar_start)
         key = f'entry|{symbol}|{timestamp}'
@@ -160,7 +162,10 @@ class ExecutionLedger:
                 if existing['asset_class']!=asset_class:raise LedgerError('Intent asset class changed')
                 if asset_class=='crypto':
                     pinned=db.execute('SELECT policy FROM crypto_policies WHERE entry_id=?',(existing['client_id'],)).fetchone()
-                    if not pinned or any(amount(json.loads(pinned['policy'])[key])!=amount(value) for key,value in exit_policy.items()):
+                    if pinned is None or crypto_policy is None or any(
+                        amount(json.loads(pinned['policy'])[key]) != amount(value)
+                        for key, value in crypto_policy.items()
+                    ):
                         raise LedgerError('Persisted crypto policy changed')
                 return dict(existing), False
             db.execute('''INSERT INTO orders(client_id,intent_key,symbol,side,requested_qty,
@@ -168,8 +173,10 @@ class ExecutionLedger:
                 (client_id,key,symbol,str(qty),str(reference_price),utc_timestamp()))
             db.execute('UPDATE orders SET asset_class=? WHERE client_id=?',(asset_class,client_id))
             if asset_class=='crypto':
+                if crypto_policy is None:
+                    raise LedgerError('Persisted crypto exit policy required')
                 db.execute('INSERT INTO crypto_policies(entry_id,policy) VALUES(?,?)',
-                    (client_id,json.dumps({key:str(value) for key,value in exit_policy.items()},sort_keys=True)))
+                    (client_id,json.dumps({key:str(value) for key,value in crypto_policy.items()},sort_keys=True)))
             db.execute('INSERT INTO events(client_id,kind,created_at) VALUES(?,?,?)',
                 (client_id,'intent_prepared',utc_timestamp()))
             return dict(db.execute('SELECT * FROM orders WHERE client_id=?',(client_id,)).fetchone()), True
@@ -330,6 +337,8 @@ class ExecutionLedger:
                 parent = db.execute('SELECT status FROM orders WHERE client_id=?',(row['parent_id'],)).fetchone()
                 if lot is None or parent['status'] not in {'filled','canceled','expired'}:
                     raise LedgerError('Exit fill without fully filled owned parent')
+                if broker_time is None or lot['entry_time'] is None:
+                    raise LedgerError('Exit or entry timestamp missing')
                 if datetime.fromisoformat(broker_time) < datetime.fromisoformat(lot['entry_time']):
                     raise LedgerError('Exit timestamp precedes the entry')
                 open_qty, open_cost = amount(lot['open_qty']), amount(lot['open_cost'])
@@ -357,7 +366,7 @@ class ExecutionLedger:
         with self.connection() as db:
             return [dict(row) for row in db.execute('SELECT * FROM orders WHERE parent_id IS NULL ORDER BY created_at,client_id')]
 
-    def snapshot(self):
+    def snapshot(self) -> dict[str, Any]:
         with self.connection() as db:
             if db.execute('PRAGMA user_version').fetchone()[0] != SCHEMA_VERSION:
                 raise LedgerError('Unsupported ledger schema')

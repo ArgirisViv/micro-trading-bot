@@ -29,14 +29,14 @@ class MacroFactorsAnalyzer:
     """
     
     def __init__(self, 
-                 api_key: str = None,
+                 api_key: Optional[str] = None,
                  update_frequency: str = 'daily'):
         self.api_key = api_key
         self.update_frequency = update_frequency
         self.cache = {}
         self.last_update = None
         
-    def analyze_macro_environment(self, symbol: str = None) -> MacroEnvironment:
+    def analyze_macro_environment(self, symbol: Optional[str] = None) -> MacroEnvironment:
         """
         Analyze current macroeconomic environment
         """
@@ -87,126 +87,16 @@ class MacroFactorsAnalyzer:
         }
     
     def _get_monetary_indicators(self) -> Dict[str, float]:
-        """Get monetary policy indicators"""
-        try:
-            indicators = {}
-            
-            # Fed funds rate proxy (short-term treasury yields)
-            shv = yf.Ticker("SHV")  # Short-term treasury ETF
-            shv_data = shv.history(period="1y")
-            if not shv_data.empty:
-                # Calculate yield (inverse relationship with price)
-                shv_yield = (1 / shv_data['Close'].iloc[-1] - 1) * 100
-                indicators['fed_funds_proxy'] = shv_yield
-            
-            # Long-term rates (TLT)
-            tlt = yf.Ticker("TLT")
-            tlt_data = tlt.history(period="1y")
-            if not tlt_data.empty:
-                tlt_yield = (1 / tlt_data['Close'].iloc[-1] - 1) * 100
-                indicators['long_term_rates'] = tlt_yield
-            
-            # Yield curve (spread between long and short)
-            if 'fed_funds_proxy' in indicators and 'long_term_rates' in indicators:
-                yield_spread = indicators['long_term_rates'] - indicators['fed_funds_proxy']
-                indicators['yield_curve_spread'] = yield_spread
-            
-            # Dollar strength (UUP)
-            uup = yf.Ticker("UUP")
-            uup_data = uup.history(period="1y")
-            if not uup_data.empty:
-                uup_momentum = (uup_data['Close'].iloc[-1] / uup_data['Close'].iloc[-252]) - 1
-                indicators['dollar_strength'] = uup_momentum
-            
-            return indicators
-            
-        except Exception as e:
-            print(f"Warning: Monetary indicators failed: {e}")
-            return {}
+        """Return no live indicators while the external provider is disabled."""
+        return {}
     
-    def _get_market_sentiment(self, symbol: str = None) -> Dict[str, float]:
-        """Get market sentiment indicators"""
-        try:
-            sentiment = {}
-            
-            # VIX (volatility index)
-            vix = yf.Ticker("^VIX")
-            vix_data = vix.history(period="1y")
-            if not vix_data.empty:
-                current_vix = vix_data['Close'].iloc[-1]
-                avg_vix = vix_data['Close'].mean()
-                vix_ratio = current_vix / avg_vix
-                sentiment['vix_ratio'] = vix_ratio
-                sentiment['fear_greed'] = 1 / vix_ratio  # Inverse relationship
-            
-            # Put/Call ratio proxy (using sector rotation)
-            xlk = yf.Ticker("XLK")  # Technology
-            xlu = yf.Ticker("XLU")  # Utilities (defensive)
-            
-            xlk_data = xlk.history(period="1y")
-            xlu_data = xlu.history(period="1y")
-            
-            if not xlk_data.empty and not xlu_data.empty:
-                xlk_momentum = (xlk_data['Close'].iloc[-1] / xlk_data['Close'].iloc[-252]) - 1
-                xlu_momentum = (xlu_data['Close'].iloc[-1] / xlu_data['Close'].iloc[-252]) - 1
-                
-                # Risk-on vs risk-off sentiment
-                risk_on_off = xlk_momentum - xlu_momentum
-                sentiment['risk_sentiment'] = risk_on_off
-            
-            # Sector rotation momentum
-            sectors = ['XLK', 'XLF', 'XLE', 'XLI', 'XLV']  # Tech, Financial, Energy, Industrial, Healthcare
-            sector_momentums = []
-            
-            for sector_ticker in sectors:
-                sector = yf.Ticker(sector_ticker)
-                sector_data = sector.history(period="1y")
-                if not sector_data.empty:
-                    momentum = (sector_data['Close'].iloc[-1] / sector_data['Close'].iloc[-252]) - 1
-                    sector_momentums.append(momentum)
-            
-            if sector_momentums:
-                sector_dispersion = np.std(sector_momentums)
-                sentiment['sector_dispersion'] = sector_dispersion
-            
-            return sentiment
-            
-        except Exception as e:
-            print(f"Warning: Market sentiment failed: {e}")
-            return {}
+    def _get_market_sentiment(self, symbol: Optional[str] = None) -> Dict[str, float]:
+        """Return no live sentiment while the external provider is disabled."""
+        return {}
     
     def _get_volatility_indicators(self) -> Dict[str, float]:
-        """Get volatility regime indicators"""
-        try:
-            volatility = {}
-            
-            # VIX levels
-            vix = yf.Ticker("^VIX")
-            vix_data = vix.history(period="1y")
-            if not vix_data.empty:
-                current_vix = vix_data['Close'].iloc[-1]
-                volatility['current_vix'] = current_vix
-                volatility['vix_percentile'] = (vix_data['Close'] < current_vix).mean()
-            
-            # Bond volatility (TLT)
-            tlt = yf.Ticker("TLT")
-            tlt_data = tlt.history(period="1y")
-            if not tlt_data.empty:
-                tlt_vol = tlt_data['Close'].pct_change().std() * np.sqrt(252)
-                volatility['bond_volatility'] = tlt_vol
-            
-            # Currency volatility (UUP)
-            uup = yf.Ticker("UUP")
-            uup_data = uup.history(period="1y")
-            if not uup_data.empty:
-                uup_vol = uup_data['Close'].pct_change().std() * np.sqrt(252)
-                volatility['currency_volatility'] = uup_vol
-            
-            return volatility
-            
-        except Exception as e:
-            print(f"Warning: Volatility indicators failed: {e}")
-            return {}
+        """Return no live volatility data while the external provider is disabled."""
+        return {}
     
     def _classify_economic_cycle(self, data: Dict[str, float]) -> str:
         """Classify economic cycle based on indicators"""
@@ -490,7 +380,7 @@ class MacroFactorsAnalyzer:
         
         return adaptations
 
-def analyze_macro_factors(symbol: str = None) -> MacroEnvironment:
+def analyze_macro_factors(symbol: str | None = None) -> MacroEnvironment:
     """
     Convenience function to analyze macro factors
     """

@@ -5,7 +5,7 @@ Provides market trend analysis, volatility regime detection, and market state cl
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 import warnings
 warnings.filterwarnings('ignore')
@@ -218,8 +218,9 @@ class MarketRegimeDetector:
             correlation_matrix = returns_df.tail(window).corr()
             
             # Get average correlation (excluding diagonal)
-            mask = ~np.eye(correlation_matrix.shape[0], dtype=bool)
-            avg_correlation = correlation_matrix[mask].mean()
+            correlation_values = correlation_matrix.to_numpy(dtype=float, copy=True)
+            mask = ~np.eye(correlation_values.shape[0], dtype=bool)
+            avg_correlation = float(np.nanmean(correlation_values[mask]))
             
             # Regime classification
             if avg_correlation > 0.7:
@@ -241,7 +242,7 @@ class MarketRegimeDetector:
             
             prices = data['close']
             
-            summary = {
+            summary: Dict[str, Any] = {
                 'overall_regime': self.detect_market_regime(data),
                 'trend': self.detect_trend(prices),
                 'volatility_regime': self.detect_volatility_regime(prices),
@@ -262,6 +263,26 @@ class MarketRegimeDetector:
         except Exception as e:
             self.logger.error(f"Error getting regime summary: {e}")
             return {}
+
+    def get_regime_adaptation(self, regime: str) -> Dict[str, float]:
+        """Return conservative trading adjustments for a detected market regime."""
+        parameters = {
+            'BULL_MARKET': (0.65, 0.9, 1.1, 1.0),
+            'BULL_VOLATILE': (0.75, 1.2, 0.7, 1.3),
+            'BEAR_MARKET': (0.75, 1.1, 0.8, 1.1),
+            'BEAR_VOLATILE': (0.85, 1.4, 0.5, 1.5),
+            'CONSOLIDATION': (0.65, 0.9, 0.9, 0.9),
+            'CHOPPY': (0.8, 1.3, 0.6, 1.4),
+        }
+        entry_threshold, risk_multiplier, position_multiplier, stop_multiplier = (
+            parameters.get(regime, (0.7, 1.0, 1.0, 1.0))
+        )
+        return {
+            'entry_threshold': entry_threshold,
+            'risk_multiplier': risk_multiplier,
+            'position_size_multiplier': position_multiplier,
+            'stop_loss_multiplier': stop_multiplier,
+        }
     
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """Calculate RSI indicator"""

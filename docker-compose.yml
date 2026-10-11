@@ -11,6 +11,7 @@ services:
       DASHBOARD_PAPER_EQUITY_CSV: /app/runtime/paper_equity.csv
       CONTROL_FILE: /app/runtime/control.json
       EXECUTION_DB: /app/runtime/execution.sqlite3
+      DASHBOARD_ACCOUNTS_DB: /app/runtime/dashboard_accounts.sqlite3
       APCA_RETRY_MAX: "0"
     ports:
       - "127.0.0.1:8080:8080"

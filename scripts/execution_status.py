@@ -1,6 +1,7 @@
 """Offline/read-only ledger summary. Does not create a DB or call a broker."""
 import argparse
 import json
+from typing import Any
 from core.execution_ledger import ExecutionLedger
 
 
@@ -9,7 +10,7 @@ def main():
     parser.add_argument('--db',required=True,help='Path to execution.sqlite3')
     args=parser.parse_args()
     try:
-        snapshot=ExecutionLedger(args.db,readonly=True).snapshot()
+        snapshot: dict[str, Any] = ExecutionLedger(args.db,readonly=True).snapshot()
         output={key:snapshot[key] for key in ('schema_version','account_bound','blocked',
             'pending_entries','reserved_reference_notional','fill_checkpoints',
             'protection_unverified_symbols')}

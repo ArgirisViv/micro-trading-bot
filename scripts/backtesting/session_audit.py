@@ -4,6 +4,7 @@ from dataclasses import asdict
 from datetime import date,timedelta
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 import pandas as pd
 from core.stock_sessions import load_calendar,session_windows
 from core.research_pipeline import load_dataset,signals_for,buy_hold,save_report
@@ -20,7 +21,8 @@ def main():
     parser.add_argument('--output',default='session_audit_001')
     args=parser.parse_args()
     if Path(args.output).exists(): raise ValueError('Choose a NEW output folder')
-    data,dataset=load_dataset(args.csv,args.timeframe)
+    data,dataset_metadata=load_dataset(args.csv,args.timeframe)
+    dataset: dict[str, Any] = dataset_metadata
     calendar=load_calendar(args.calendar)
     cutoff=pd.Timestamp(date.fromisoformat(args.development_end)+timedelta(days=1),tz='America/New_York').tz_convert('UTC')
     development=data.loc[data.index<cutoff]
@@ -30,7 +32,7 @@ def main():
     endings,_=session_windows(sample.index,calendar,args.timeframe)
     regular=[i for i,ending in enumerate(endings) if pd.notna(ending)]
     if not regular: raise ValueError('No regular-session bars in development sample')
-    report=dict(protocol='continuous development-only regular-session DAY audit v1',
+    report: dict[str, Any] = dict(protocol='continuous development-only regular-session DAY audit v1',
         development_end=args.development_end,evaluated_rows=len(sample),warmup_rows=100,
         reserved_later_rows=int((data.index>=cutoff).sum()),later_performance_evaluated=False,
         scenarios={},interpretation='Diagnostic of current DAY order lifetime. No forced close or automatic re-protection. '

@@ -55,6 +55,8 @@ def simulate(bars, signals, policy=BacktestPolicy(), *, initial_signal=0,
     previous_equity = cash
     session_ends, duration = None, None
     if calendar is not None:
+        if timeframe is None:
+            raise ValueError('Timeframe required for session-aware simulation')
         from core.stock_sessions import session_windows
         session_ends,duration = session_windows(data.index,calendar,timeframe)
     elif timeframe is not None:
@@ -71,9 +73,16 @@ def simulate(bars, signals, policy=BacktestPolicy(), *, initial_signal=0,
         # The signal at t is only executable at t+1; the last signal has no fill.
         prior_signal = initial_signal if i == 0 else signal.iloc[i-1]
         decision_time = data.index[i-1] if i > 0 else initial_signal_time
-        fresh_decision = session_ends is None or (decision_time is not None
-            and pd.Timestamp(decision_time).tzinfo is not None
-            and pd.Timestamp(decision_time)+duration == timestamp)
+        if session_ends is None:
+            fresh_decision = True
+        elif decision_time is not None and duration is not None:
+            decision_timestamp = pd.Timestamp(decision_time)
+            fresh_decision = (
+                decision_timestamp.tzinfo is not None
+                and decision_timestamp + duration == timestamp
+            )
+        else:
+            fresh_decision = False
         # No stale signal carry across an overnight/missing-bar gap.
         if qty == 0 and regular and fresh_decision and prior_signal == 1:
             entry = bar.open * (1 + slip)

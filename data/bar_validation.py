@@ -9,8 +9,12 @@ def bar_interval(timeframe):
     if not match:
         raise ValueError('Unsupported timeframe')
     number, unit = match.groups()
-    return pd.Timedelta(int(number), unit={'min':'min', 'm':'min', 'h':'h',
-        'hour':'h', 'day':'D', 'Day':'D', 'd':'D'}[unit])
+    count = int(number)
+    if unit in {'min', 'm'}:
+        return pd.Timedelta(count, unit='min')
+    if unit in {'h', 'hour'}:
+        return pd.Timedelta(count, unit='h')
+    return pd.Timedelta(count, unit='D')
 
 
 def validated_bars(frame, timeframe, now=None, require_fresh=True):
@@ -47,6 +51,7 @@ def validated_bars(frame, timeframe, now=None, require_fresh=True):
     result = result[result.index + interval <= current]
     if result.empty:
         raise ValueError('No completed bars')
-    if require_fresh and current - (result.index[-1] + interval) > interval * 2:
+    last_completed = pd.Timestamp(result.index[-1]) + interval
+    if require_fresh and current - last_completed > interval * 2:
         raise ValueError('Market bars are stale')
     return result

@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import joblib
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 import logging
 
 class EnhancedMLModel:
@@ -83,7 +83,7 @@ class EnhancedMLModel:
             
             # Remove infinite and NaN values
             features = features.replace([np.inf, -np.inf], np.nan)
-            features = features.fillna(method='ffill').fillna(0)
+            features = features.ffill().fillna(0)
             
             self.feature_names = features.columns.tolist()
             return features
@@ -127,7 +127,7 @@ class EnhancedMLModel:
             
             # Prepare data
             X = features.values
-            y = target.values
+            y = target.astype("int64").to_numpy(copy=True)
             
             # Split data
             X_train, X_test, y_train, y_test = train_test_split(
@@ -203,10 +203,10 @@ class EnhancedMLModel:
                 return {}
             
             return {
-                'accuracy': accuracy_score(target, predictions),
-                'precision': precision_score(target, predictions, average='weighted'),
-                'recall': recall_score(target, predictions, average='weighted'),
-                'f1': f1_score(target, predictions, average='weighted')
+                'accuracy': float(accuracy_score(target, predictions)),
+                'precision': float(precision_score(target, predictions, average='weighted')),
+                'recall': float(recall_score(target, predictions, average='weighted')),
+                'f1': float(f1_score(target, predictions, average='weighted'))
             }
         except Exception as e:
             self.logger.error(f"Error evaluating model: {e}")
@@ -258,7 +258,7 @@ class EnhancedMLModel:
         
         return False
     
-    def get_model_info(self) -> Dict[str, any]:
+    def get_model_info(self) -> Dict[str, Any]:
         """Get model information"""
         return {
             'is_trained': self.is_trained,

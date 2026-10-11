@@ -1,6 +1,7 @@
 """Runtime integration for the ledger; no network on import."""
 import os
 from pathlib import Path
+from typing import Any
 from core import alpaca_trade
 from core.execution_ledger import ExecutionLedger, LedgerError, reconcile, verify_positions, amount, field, utc_timestamp, TERMINAL
 
@@ -9,7 +10,7 @@ def ledger_path(state_path):
     return Path(os.getenv('EXECUTION_DB',str(Path(state_path).with_name('execution.sqlite3'))))
 
 
-def initialize_ledger(state, state_path):
+def initialize_ledger(state: dict[str, Any], state_path: str | Path) -> ExecutionLedger:
     path = ledger_path(state_path)
     if state.get('execution_schema_version') and not path.is_file():
         raise LedgerError('Previously initialized ledger is missing; automatic recreation refused')
@@ -25,7 +26,7 @@ def initialize_ledger(state, state_path):
     return ledger
 
 
-def refresh_execution(ledger, *, broker=alpaca_trade):
+def refresh_execution(ledger: ExecutionLedger, *, broker: Any = alpaca_trade) -> dict[str, Any]:
     try:
         account_id=field(broker.get_account(),'id')
         if account_id is None:raise LedgerError('Paper account ID missing')
@@ -48,7 +49,7 @@ def refresh_execution(ledger, *, broker=alpaca_trade):
     return result
 
 
-def apply_execution_state(state, snapshot):
+def apply_execution_state(state: dict[str, Any], snapshot: dict[str, Any]) -> None:
     state['execution'] = snapshot
     state['execution_reconciled_at'] = utc_timestamp()
     # Never clear a stage-1 lock lacking any persisted recoverable intent.

@@ -6,12 +6,19 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 from datetime import datetime
 
-from ..domain.entities import TradingSignal, Position, Order, Portfolio
+from ..domain.entities import (
+    TradingSignal,
+    Position,
+    Order,
+    Portfolio,
+    PositionSide,
+    SignalType,
+)
 from ..domain.services import StrategyService, RiskManagementService
 from ..domain.repositories import TradingRepository, DataRepository
 from ..domain.value_objects import Money, Percentage, RiskLevel
 from .dto import (
-    TradingRequest, TradingResponse, PortfolioUpdate,
+    TradingAction, TradingRequest, TradingResponse, PortfolioUpdate,
     SignalRequest, SignalResponse,
     RiskAssessmentRequest, RiskAssessmentResponse
 )
@@ -162,9 +169,9 @@ class ConcreteTradingUseCase(TradingUseCase):
             # Create close order
             close_request = TradingRequest(
                 symbol=symbol,
-                action=request.action,  # This should be CLOSE
+                action=TradingAction.CLOSE,
                 quantity=position.quantity,
-                price=position.current_price.amount
+                price=float(position.current_price.amount)
             )
             
             return self._execute_close_position(close_request, portfolio)
@@ -184,43 +191,70 @@ class ConcreteTradingUseCase(TradingUseCase):
     
     def _validate_trade_request(self, request: TradingRequest, portfolio: Portfolio) -> bool:
         """Validate trade request against portfolio"""
-        # Basic validation
-        if request.action.value in ["buy", "sell"] and not request.quantity:
+        if (request.action.value in ["buy", "sell"] and request.quantity is None
+                and request.risk_per_trade is None):
+            return False
+        price = self._resolve_request_price(request)
+        if request.action.value in ["buy", "sell"] and (price is None or price <= 0):
             return False
         
         # Check if we have enough cash for buy orders
         if request.action.value == "buy":
-            required_cash = request.quantity * (request.price or 0)
-            if required_cash > portfolio.cash.amount:
+            required_cash = (request.quantity or 0) * (price or 0)
+            if required_cash > float(portfolio.cash.amount):
                 return False
         
         # Check if we have position for sell orders
         if request.action.value == "sell":
             position = portfolio.get_position_by_symbol(request.symbol)
-            if not position or position.quantity < request.quantity:
+            if (not position or request.quantity is None
+                    or position.quantity < request.quantity):
                 return False
         
         return True
+
+    def _resolve_request_price(self, request: TradingRequest) -> float | None:
+        if request.price is not None:
+            return request.price
+        return self.data_repository.get_latest_price(request.symbol)
     
     def _execute_buy_order(self, request: TradingRequest, portfolio: Portfolio) -> TradingResponse:
         """Execute buy order"""
         try:
-            # Calculate position size if not provided
+            price = self._resolve_request_price(request)
+            if price is None or price <= 0:
+                return TradingResponse(
+                    success=False,
+                    message="A valid execution price is unavailable",
+                    error_code="PRICE_UNAVAILABLE"
+                )
+
             quantity = request.quantity
-            if not quantity and request.risk_per_trade:
-                # Use risk management service to calculate position size
-                risk_pct = Percentage(request.risk_per_trade * 100)
+            if quantity is None and request.risk_per_trade is not None:
+                signal = TradingSignal(
+                    symbol=request.symbol,
+                    signal_type=SignalType.BUY,
+                    confidence=0.8,
+                    price=Money.from_float(price)
+                )
                 quantity = self.risk_service.calculate_position_size(
-                    TradingSignal(symbol=request.symbol, signal_type=SignalType.BUY),
                     portfolio,
-                    risk_pct
+                    signal,
+                    pd.DataFrame({"close": [price]}),
+                    request.risk_per_trade
                 )
             
-            if not quantity:
+            if quantity is None or quantity <= 0:
                 return TradingResponse(
                     success=False,
                     message="Invalid quantity for buy order",
                     error_code="INVALID_QUANTITY"
+                )
+            if quantity * price > float(portfolio.cash.amount):
+                return TradingResponse(
+                    success=False,
+                    message="Insufficient cash for buy order",
+                    error_code="INSUFFICIENT_CASH"
                 )
             
             # Create order
@@ -228,7 +262,7 @@ class ConcreteTradingUseCase(TradingUseCase):
                 symbol=request.symbol,
                 side=PositionSide.LONG,
                 quantity=quantity,
-                price=Money(request.price or 0),
+                price=Money.from_float(price),
                 order_type=request.order_type.value
             )
             
@@ -236,8 +270,8 @@ class ConcreteTradingUseCase(TradingUseCase):
             portfolio.add_order(order)
             
             # Update cash
-            order_value = quantity * (request.price or 0)
-            portfolio.update_cash(Money(-order_value))
+            order_value = quantity * price
+            portfolio.update_cash(Money.from_float(-order_value))
             
             # Save portfolio
             self.trading_repository.save_portfolio(portfolio)
@@ -246,7 +280,7 @@ class ConcreteTradingUseCase(TradingUseCase):
                 success=True,
                 order_id=order.id,
                 message=f"Buy order submitted for {quantity} {request.symbol}",
-                execution_price=request.price,
+                execution_price=price,
                 execution_quantity=quantity
             )
             
@@ -262,7 +296,10 @@ class ConcreteTradingUseCase(TradingUseCase):
         try:
             # Check if we have position to sell
             position = portfolio.get_position_by_symbol(request.symbol)
-            if not position or position.quantity < request.quantity:
+            quantity = request.quantity
+            price = self._resolve_request_price(request)
+            if (not position or quantity is None or quantity <= 0
+                    or position.quantity < quantity or price is None or price <= 0):
                 return TradingResponse(
                     success=False,
                     message=f"Insufficient position for {request.symbol}",
@@ -273,13 +310,18 @@ class ConcreteTradingUseCase(TradingUseCase):
             order = Order(
                 symbol=request.symbol,
                 side=PositionSide.SHORT,
-                quantity=request.quantity,
-                price=Money(request.price or 0),
+                quantity=quantity,
+                price=Money.from_float(price),
                 order_type=request.order_type.value
             )
             
             # Add order to portfolio
             portfolio.add_order(order)
+            portfolio.update_cash(Money.from_float(quantity * price))
+            position.current_price = Money.from_float(price)
+            position.quantity -= quantity
+            if position.quantity == 0:
+                portfolio.remove_position(position.id)
             
             # Save portfolio
             self.trading_repository.save_portfolio(portfolio)
@@ -287,9 +329,9 @@ class ConcreteTradingUseCase(TradingUseCase):
             return TradingResponse(
                 success=True,
                 order_id=order.id,
-                message=f"Sell order submitted for {request.quantity} {request.symbol}",
-                execution_price=request.price,
-                execution_quantity=request.quantity
+                message=f"Sell order submitted for {quantity} {request.symbol}",
+                execution_price=price,
+                execution_quantity=quantity
             )
             
         except Exception as e:
@@ -315,7 +357,7 @@ class ConcreteTradingUseCase(TradingUseCase):
             
             # Update cash (simplified - in reality you'd get market price)
             position_value = position.market_value.amount
-            portfolio.update_cash(Money(position_value))
+            portfolio.update_cash(Money.from_float(float(position_value)))
             
             # Save portfolio
             self.trading_repository.save_portfolio(portfolio)
@@ -323,7 +365,7 @@ class ConcreteTradingUseCase(TradingUseCase):
             return TradingResponse(
                 success=True,
                 message=f"Position closed for {request.symbol}",
-                execution_price=position.current_price.amount,
+                execution_price=float(position.current_price.amount),
                 execution_quantity=position.quantity
             )
             
@@ -346,7 +388,7 @@ class ConcretePortfolioUseCase(PortfolioUseCase):
         try:
             portfolio = Portfolio(
                 name=name,
-                cash=Money(initial_cash)
+                cash=Money.from_float(initial_cash)
             )
             
             # Save portfolio
@@ -366,7 +408,7 @@ class ConcretePortfolioUseCase(PortfolioUseCase):
             
             # Apply cash change
             if update.cash_change != 0:
-                portfolio.update_cash(Money(update.cash_change))
+                portfolio.update_cash(Money.from_float(update.cash_change))
             
             # Apply position changes
             for pos_data in update.positions_added:
@@ -436,8 +478,9 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
                     recommendations=["Create portfolio first"]
                 )
             
-            # Get risk assessment from domain service
-            risk_level = self.risk_service.check_portfolio_risk(portfolio)
+            # Get risk assessment from the domain service.
+            service_metrics = self.risk_service.calculate_portfolio_risk(portfolio)
+            risk_level = RiskLevel(service_metrics.get("overall_risk", RiskLevel.MEDIUM.value))
             
             # Calculate risk metrics
             risk_metrics = self._calculate_risk_metrics(portfolio, request.risk_metrics)
@@ -450,8 +493,8 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
             
             return RiskAssessmentResponse(
                 portfolio_id=request.portfolio_id,
-                overall_risk_level=risk_level.level,
-                risk_score=risk_level.value / 5.0,  # Normalize to 0-1
+                overall_risk_level=risk_level.value,
+                risk_score=float(service_metrics.get("risk_score", 0.0)),
                 risk_metrics=risk_metrics,
                 risk_alerts=risk_alerts,
                 recommendations=recommendations
@@ -470,7 +513,9 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
         """Validate if trade meets risk criteria"""
         try:
             portfolio = self.trading_repository.get_portfolio(portfolio_id)
-            if not portfolio:
+            price = trade_request.price
+            quantity = trade_request.quantity
+            if not portfolio or price is None or quantity is None:
                 return False
             
             # Create trading signal for validation
@@ -478,12 +523,14 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
                 symbol=trade_request.symbol,
                 signal_type=SignalType.BUY if trade_request.action.value == "buy" else SignalType.SELL,
                 confidence=0.8,  # Default confidence
-                price=Money(trade_request.price or 0)
+                price=Money.from_float(price)
             )
             
             # Validate trade using risk service
-            position_size = trade_request.quantity or 0
-            return self.risk_service.validate_trade(signal, portfolio, position_size)
+            is_valid, _reason = self.risk_service.validate_trade(
+                portfolio, signal, quantity, Money.from_float(price)
+            )
+            return is_valid
             
         except Exception as e:
             return False
@@ -558,8 +605,8 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
         
         # Assume normal distribution with 2% daily volatility
         daily_vol = 0.02
-        var_95 = portfolio.total_value.amount * daily_vol * 1.645
-        return var_95
+        var_95 = float(portfolio.total_value.amount) * daily_vol * 1.645
+        return float(var_95)
     
     def _calculate_sharpe(self, portfolio: Portfolio) -> float:
         """Calculate Sharpe ratio (simplified)"""
@@ -571,7 +618,8 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
         risk_free_rate = 0.02 / 252  # Daily rate
         
         # Calculate daily return (simplified)
-        daily_return = portfolio.total_unrealized_pnl.amount / portfolio.total_value.amount / 30  # Assume 30 days
+        daily_return = (float(portfolio.total_unrealized_pnl.amount) /
+                        float(portfolio.total_value.amount) / 30)  # Assume 30 days
         
         # Calculate Sharpe ratio
         excess_return = daily_return - risk_free_rate
@@ -589,7 +637,7 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
         
         # Simplified drawdown calculation
         if portfolio.total_unrealized_pnl.amount < 0:
-            return abs(portfolio.total_unrealized_pnl_percentage.value) / 100
+            return float(abs(portfolio.total_unrealized_pnl_percentage.value) / 100)
         return 0.0
     
     def _calculate_volatility(self, portfolio: Portfolio) -> float:
@@ -619,19 +667,21 @@ class ConcreteRiskManagementUseCase(RiskManagementUseCase):
             return 0.0
         
         # Find largest position
-        max_position_value = 0
+        max_position_value = 0.0
         for position in portfolio.positions:
-            if position.market_value.amount > max_position_value:
-                max_position_value = position.market_value.amount
+            position_value = float(position.market_value.amount)
+            if position_value > max_position_value:
+                max_position_value = position_value
         
-        return max_position_value / portfolio.total_value.amount
+        return max_position_value / float(portfolio.total_value.amount)
     
     def _generate_risk_alerts(self, portfolio: Portfolio, risk_metrics: Dict[str, Any]) -> List[str]:
         """Generate risk alerts based on metrics"""
         alerts = []
         
         # Check VaR
-        if "var" in risk_metrics and risk_metrics["var"] > portfolio.total_value.amount * 0.05:
+        if ("var" in risk_metrics
+                and risk_metrics["var"] > float(portfolio.total_value.amount) * 0.05):
             alerts.append("High Value at Risk - consider reducing position sizes")
         
         # Check concentration

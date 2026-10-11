@@ -6,10 +6,10 @@ Combines Technical Analysis, ML Predictions, and Fundamental Analysis
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Tuple, Optional
-from .enhanced_indicators import add_enhanced_indicators, generate_enhanced_signals
-from .ml_model import create_features, load_model
-from .fundamentals import fetch_fundamentals
+from typing import Dict, Optional
+from core.enhanced_indicators import add_enhanced_indicators, generate_enhanced_signals
+from core.ml_model import create_features, load_model
+from core.fundamentals import fetch_fundamentals
 
 class EnhancedStrategy:
     """
@@ -24,7 +24,7 @@ class EnhancedStrategy:
         self.volume_threshold = volume_threshold
         self.volatility_threshold = volatility_threshold
         
-    def apply_strategy(self, data: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
+    def apply_strategy(self, data: pd.DataFrame, symbol: Optional[str] = None) -> pd.DataFrame:
         """
         Apply enhanced strategy to data
         Returns DataFrame with enhanced signals and confidence scores
@@ -58,7 +58,7 @@ class EnhancedStrategy:
             X, _ = create_features(df)
             model = load_model()
             
-            if not X.empty and hasattr(model, 'predict_proba'):
+            if model is not None and not X.empty and hasattr(model, 'predict_proba'):
                 # Get probability predictions for confidence
                 proba = model.predict_proba(X)
                 df.loc[X.index, 'ml_prediction'] = model.predict(X)
@@ -141,10 +141,11 @@ class EnhancedStrategy:
         fundamental_weight = 0.2 if 'fundamental_adjustment' in df.columns else 0.0
         
         # Calculate composite signal
-        for idx in df.index:
-            technical_sig = df.loc[idx, 'technical_signal']
-            ml_sig = df.loc[idx, 'ml_prediction'] if 'ml_prediction' in df.columns else 0
-            ml_conf = df.loc[idx, 'ml_confidence'] if 'ml_confidence' in df.columns else 0.5
+        signals = []
+        for row in df.to_dict(orient='records'):
+            technical_sig = row.get('technical_signal', 0)
+            ml_sig = row.get('ml_prediction', 0)
+            ml_conf = row.get('ml_confidence', 0.5)
             
             # Weighted signal calculation
             composite_signal = (
@@ -154,16 +155,18 @@ class EnhancedStrategy:
             
             # Apply fundamental adjustment if available
             if 'fundamental_adjustment' in df.columns:
-                composite_signal *= df.loc[idx, 'fundamental_adjustment']
-                composite_signal += fundamental_weight * (df.loc[idx, 'fundamental_score'] - 0.5)
+                composite_signal *= row['fundamental_adjustment']
+                composite_signal += fundamental_weight * (row['fundamental_score'] - 0.5)
             
             # Generate final signal with confidence threshold
             if composite_signal > self.confidence_threshold:
-                df.loc[idx, 'signal'] = 1
+                signals.append(1)
             elif composite_signal < -self.confidence_threshold:
-                df.loc[idx, 'signal'] = -1
+                signals.append(-1)
             else:
-                df.loc[idx, 'signal'] = 0
+                signals.append(0)
+
+        df['signal'] = signals
         
         return df
     
@@ -174,26 +177,27 @@ class EnhancedStrategy:
         # Overall confidence score
         df['confidence_score'] = 0.0
         
-        for idx in df.index:
+        confidence_scores = []
+        for row in df.to_dict(orient='records'):
             confidence = 0.0
             
             # Technical confidence
-            if df.loc[idx, 'technical_signal'] != 0:
+            if row.get('technical_signal', 0) != 0:
                 # Check indicator alignment
                 tech_conf = 0.0
                 if 'macd' in df.columns and 'macd_signal' in df.columns:
-                    if abs(df.loc[idx, 'macd'] - df.loc[idx, 'macd_signal']) > 0:
+                    if abs(row['macd'] - row['macd_signal']) > 0:
                         tech_conf += 0.2
                 if 'bb_percent_b' in df.columns:
-                    bb_pos = df.loc[idx, 'bb_percent_b']
+                    bb_pos = row['bb_percent_b']
                     if bb_pos < 0.2 or bb_pos > 0.8:
                         tech_conf += 0.2
                 if 'rsi' in df.columns:
-                    rsi = df.loc[idx, 'rsi']
+                    rsi = row['rsi']
                     if rsi < 30 or rsi > 70:
                         tech_conf += 0.2
                 if 'volume_momentum' in df.columns:
-                    vol_mom = df.loc[idx, 'volume_momentum']
+                    vol_mom = row['volume_momentum']
                     if vol_mom > 0.1:
                         tech_conf += 0.2
                 
@@ -201,14 +205,16 @@ class EnhancedStrategy:
             
             # ML confidence
             if 'ml_confidence' in df.columns:
-                confidence += df.loc[idx, 'ml_confidence'] * 0.4
+                confidence += row['ml_confidence'] * 0.4
             
             # Fundamental confidence
             if 'fundamental_score' in df.columns:
-                fund_score = df.loc[idx, 'fundamental_score']
+                fund_score = row['fundamental_score']
                 confidence += fund_score * 0.2
             
-            df.loc[idx, 'confidence_score'] = min(1.0, confidence)
+            confidence_scores.append(min(1.0, confidence))
+
+        df['confidence_score'] = confidence_scores
         
         # Risk metrics
         df['risk_level'] = 'LOW'
@@ -241,7 +247,7 @@ class EnhancedStrategy:
             'signal_quality': 'HIGH' if confidence_avg > 0.7 else 'MEDIUM' if confidence_avg > 0.5 else 'LOW'
         }
 
-def apply_enhanced_strategy(data: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
+def apply_enhanced_strategy(data: pd.DataFrame, symbol: Optional[str] = None) -> pd.DataFrame:
     """
     Convenience function to apply enhanced strategy
     """

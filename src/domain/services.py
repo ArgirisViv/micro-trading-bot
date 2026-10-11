@@ -7,9 +7,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from .entities import TradingSignal, Position, Order, Portfolio
-from .value_objects import Money, Percentage, RiskLevel, Confidence
-from .repositories import TradingRepository, DataRepository, RiskRepository
+from .entities import SignalType, TradingSignal, Position, Portfolio
+from .value_objects import Money, RiskLevel, Confidence
+from .repositories import DataRepository, RiskRepository
 
 
 class StrategyService(ABC):
@@ -46,7 +46,8 @@ class RiskManagementService(ABC):
     
     @abstractmethod
     def calculate_position_size(self, portfolio: Portfolio, signal: TradingSignal, 
-                              market_data: pd.DataFrame) -> int:
+                              market_data: pd.DataFrame,
+                              risk_per_trade: float = 0.02) -> int:
         """Calculate optimal position size based on risk management rules"""
         pass
     
@@ -78,7 +79,7 @@ class ConcreteStrategyService(StrategyService):
         if market_data.empty:
             return TradingSignal(
                 symbol=symbol,
-                signal_type="HOLD",
+                signal_type=SignalType.HOLD,
                 confidence=0.0,
                 risk_level=RiskLevel.HIGH
             )
@@ -240,20 +241,20 @@ class ConcreteStrategyService(StrategyService):
         
         return Confidence.from_float(final_confidence)
     
-    def _determine_signal_type(self, indicators: Dict[str, float]) -> str:
+    def _determine_signal_type(self, indicators: Dict[str, float]) -> SignalType:
         """Determine signal type based on technical indicators"""
         if not indicators:
-            return "HOLD"
+            return SignalType.HOLD
         
         # Simple signal generation logic
         technical_score = indicators.get('technical_score', 0.5)
         
         if technical_score > 0.7:
-            return "BUY"
+            return SignalType.BUY
         elif technical_score < 0.3:
-            return "SELL"
+            return SignalType.SELL
         else:
-            return "HOLD"
+            return SignalType.HOLD
     
     def _calculate_signal_confidence(self, indicators: Dict[str, float]) -> float:
         """Calculate signal confidence based on indicator strength"""
@@ -417,7 +418,7 @@ class ConcreteStrategyService(StrategyService):
 class ConcreteRiskManagementService(RiskManagementService):
     """Concrete implementation of risk management service"""
     
-    def __init__(self, risk_repository: RiskRepository):
+    def __init__(self, risk_repository: RiskRepository | None = None):
         self.risk_repository = risk_repository
     
     def assess_position_risk(self, position: Position, market_data: pd.DataFrame) -> RiskLevel:
@@ -458,16 +459,17 @@ class ConcreteRiskManagementService(RiskManagementService):
             return RiskLevel.LOW
     
     def calculate_position_size(self, portfolio: Portfolio, signal: TradingSignal, 
-                              market_data: pd.DataFrame) -> int:
+                              market_data: pd.DataFrame,
+                              risk_per_trade: float = 0.02) -> int:
         """Calculate optimal position size based on risk management rules"""
         if market_data.empty:
             return 1
         
         # Get portfolio cash
-        available_cash = portfolio.cash.amount
+        available_cash = float(portfolio.cash.amount)
         
-        # Risk per trade (2% of portfolio)
-        risk_per_trade = available_cash * 0.02
+        # Risk per trade is a fraction of available cash.
+        risk_budget = available_cash * risk_per_trade
         
         # Get latest price
         if 'close' in market_data.columns:
@@ -479,7 +481,7 @@ class ConcreteRiskManagementService(RiskManagementService):
             return 1
         
         # Calculate position size based on risk
-        position_size = int(risk_per_trade / latest_price)
+        position_size = int(risk_budget / latest_price)
         
         # Ensure minimum size
         position_size = max(1, position_size)
@@ -535,8 +537,8 @@ class ConcreteRiskManagementService(RiskManagementService):
             }
         
         # Calculate basic risk metrics
-        total_value = portfolio.total_value.amount
-        total_pnl = portfolio.total_unrealized_pnl.amount
+        total_value = float(portfolio.total_value.amount)
+        total_pnl = float(portfolio.total_unrealized_pnl.amount)
         
         # Value at Risk (simplified)
         if total_value > 0:
@@ -563,7 +565,7 @@ class ConcreteRiskManagementService(RiskManagementService):
         
         # Concentration risk
         if portfolio.positions:
-            position_values = [pos.market_value.amount for pos in portfolio.positions]
+            position_values = [float(pos.market_value.amount) for pos in portfolio.positions]
             max_position_value = max(position_values)
             concentration_risk = max_position_value / total_value if total_value > 0 else 0
         else:

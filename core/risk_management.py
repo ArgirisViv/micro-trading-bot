@@ -1,7 +1,7 @@
 # Advanced Risk Management Module
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import warnings
@@ -21,7 +21,7 @@ class RiskLimits:
 class PortfolioRiskManager:
     """Advanced portfolio-level risk management"""
     
-    def __init__(self, risk_limits: RiskLimits = None):
+    def __init__(self, risk_limits: Optional[RiskLimits] = None):
         self.risk_limits = risk_limits or RiskLimits()
         self.positions = {}
         self.daily_pnl = 0.0
@@ -80,7 +80,7 @@ class PortfolioRiskManager:
         # Check if new position correlates too highly with existing
         for symbol in existing_positions:
             if symbol != new_symbol:
-                corr = abs(correlation_matrix.loc[new_symbol, symbol])
+                corr = abs(float(str(correlation_matrix.at[new_symbol, symbol])))
                 if corr > self.risk_limits.max_correlation:
                     return False
         
@@ -212,7 +212,7 @@ class PortfolioRiskManager:
     
     def generate_risk_report(self, 
                             positions: Dict[str, Dict],
-                            portfolio_value: float) -> Dict[str, any]:
+                            portfolio_value: float) -> Dict[str, Any]:
         """Generate comprehensive risk report"""
         
         risk_metrics = self.calculate_portfolio_risk(positions, pd.DataFrame())
@@ -247,7 +247,7 @@ class PortfolioRiskManager:
 class TradeRiskManager:
     """Individual trade risk management"""
     
-    def __init__(self, risk_limits: RiskLimits = None):
+    def __init__(self, risk_limits: Optional[RiskLimits] = None):
         self.risk_limits = risk_limits or RiskLimits()
     
     def calculate_risk_reward_ratio(self, 
@@ -305,10 +305,10 @@ class TradeRiskManager:
         return total_risk
 
 # Convenience functions
-def create_risk_manager(risk_limits: RiskLimits = None) -> PortfolioRiskManager:
+def create_risk_manager(risk_limits: Optional[RiskLimits] = None) -> PortfolioRiskManager:
     """Create a risk manager with default or custom limits"""
     return PortfolioRiskManager(risk_limits)
 
-def create_trade_risk_manager(risk_limits: RiskLimits = None) -> TradeRiskManager:
+def create_trade_risk_manager(risk_limits: Optional[RiskLimits] = None) -> TradeRiskManager:
     """Create a trade risk manager with default or custom limits"""
     return TradeRiskManager(risk_limits)

@@ -2,7 +2,7 @@
 
 import math
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 # yfinance removed - using mock data instead
 
 def _safe(val, default=None):
@@ -13,7 +13,7 @@ def _safe(val, default=None):
     except Exception:
         return default
 
-def fetch_fundamentals(ticker: str) -> Dict:
+def fetch_fundamentals(ticker: str) -> Dict[str, Optional[float]]:
     """Mock fundamentals data - yfinance removed for stability."""
     # Return empty fundamentals to avoid errors
     return {
@@ -26,7 +26,7 @@ def fetch_fundamentals(ticker: str) -> Dict:
         "fcf_yield": None,
     }
 
-def _zscore(x: float, series: List[float], reverse=False) -> float:
+def _zscore(x: Optional[float], series: List[Optional[float]], reverse: bool = False) -> float:
     """Απλός z-score κανονικοποίησης για σύγκριση (με reverse για 'μικρότερο=καλύτερο')."""
     vals = [v for v in series if v is not None]
     if len(vals) < 5 or x is None:
@@ -37,7 +37,9 @@ def _zscore(x: float, series: List[float], reverse=False) -> float:
     z = (x - mu) / sd
     return -z if reverse else z
 
-def _build_matrix(raw: Dict[str, Dict]) -> Dict[str, Dict]:
+def _build_matrix(
+    raw: Dict[str, Dict[str, Optional[float]]]
+) -> Dict[str, List[Optional[float]]]:
     """Φτιάχνει ‘πίνακα’ τιμών ανά metric για κανονικοποίηση."""
     keys = list(raw.keys())
     cols = ["pe","pb","roe","fcf_yield","debt_to_equity","profit_margin"]
@@ -51,10 +53,11 @@ def _build_matrix(raw: Dict[str, Dict]) -> Dict[str, Dict]:
 def score_tickers(tickers: List[str], weights: Dict[str, float], min_mcap: float) -> List[Tuple[str, float, Dict]]:
     """Υπολογίζει composite score ανά ticker με βάρη (τύπου Buffett)."""
     # 1) Fetch με λίγη ευγένεια (για να μην μας κόψει το rate limiting)
-    raw: Dict[str, Dict] = {}
+    raw: Dict[str, Dict[str, Optional[float]]] = {}
     for i, tk in enumerate(tickers):
         d = fetch_fundamentals(tk)
-        if d.get("market_cap") and d["market_cap"] >= min_mcap:
+        market_cap = d.get("market_cap")
+        if market_cap is not None and market_cap >= min_mcap:
             raw[tk] = d
         # μικρό sleep
         if i % 8 == 7:

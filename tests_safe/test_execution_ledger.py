@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 import copy
+from typing import Any
 import pytest
 from core.execution_ledger import ExecutionLedger, LedgerError, reconcile, verify_positions
 from core.execution_runtime import initialize_ledger, refresh_execution, apply_execution_state
@@ -12,18 +13,20 @@ TIME='2026-09-16T15:00:00+00:00'
 def ledger(tmp_path): return ExecutionLedger(tmp_path/'execution.sqlite3')
 
 
-def prepare(ledger,qty=10):
+def prepare(ledger: ExecutionLedger, qty: Any = 10) -> dict[str, Any]:
     return ledger.prepare_entry('AAPL',qty,100,TIME)[0]
 
 
-def order(intent, *, filled='0',avg=None,status='new',legs=None):
+def order(intent: dict[str, Any], *, filled: Any = '0', avg: Any = None,
+          status: str = 'new', legs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return dict(id='entry-broker-1',client_order_id=intent['client_id'],symbol='AAPL',
         side='buy',qty=intent['requested_qty'],filled_qty=str(filled),filled_avg_price=avg,
         status=status,updated_at=TIME,filled_at=TIME if str(filled)!='0' else None,
         legs=legs or [])
 
 
-def leg(*,filled='0',avg=None,status='new',name='take',qty='10'):
+def leg(*,filled: Any = '0', avg: Any = None, status: str = 'new',
+        name: str = 'take', qty: Any = '10') -> dict[str, Any]:
     return dict(id='leg-broker-'+name,client_order_id='broker-leg-'+name,symbol='AAPL',
         type='stop' if name=='stop' else 'limit',
         side='sell',qty=qty,filled_qty=str(filled),filled_avg_price=avg,status=status,
@@ -186,9 +189,10 @@ def test_wrong_symbol_child_never_adopted(ledger):
 
 
 class FakeBroker:
-    def __init__(self,root=None,positions=None,failed=False):
+    def __init__(self, root: dict[str, Any] | None = None,
+                 positions: list[dict[str, Any]] | None = None, failed: bool = False):
         self.root=root;self.positions=positions or [];self.failed=failed;self.reads=[]
-    def get_account(self):return {'id':'offline-paper-account'}
+    def get_account(self) -> dict[str, str | None]:return {'id':'offline-paper-account'}
     def get_order_by_client_order_id(self,client_id):
         self.reads.append(('client',client_id))
         if self.failed:raise TimeoutError('sensitive URL must not be exposed')
@@ -239,7 +243,7 @@ def test_external_nvda_stays_external_and_does_not_create_lot(ledger):
 def test_same_symbol_manual_or_missing_quantity_blocks_ownership(ledger,qty):
     intent=prepare(ledger)
     ledger.observe_tree(intent['client_id'],order(intent,filled=10,avg='100',status='filled'))
-    result=verify_positions(ledger.snapshot(),[dict(symbol='AAPL',qty=qty)])
+    result: dict[str, Any] = verify_positions(ledger.snapshot(),[dict(symbol='AAPL',qty=qty)])
     assert result['blocked']
     assert result['position_mismatches'][0]['owned_qty']=='10'
 
@@ -338,7 +342,7 @@ def test_exit_before_entry_is_quarantined(ledger):
 def test_terminal_rejection_resets_signal_but_keeps_durable_intent(ledger):
     intent=prepare(ledger)
     ledger.observe_tree(intent['client_id'],order(intent,status='rejected'))
-    state=dict(prev_sig={'AAPL':1},execution_uncertain=True)
+    state: dict[str, Any] = dict(prev_sig={'AAPL':1},execution_uncertain=True)
     apply_execution_state(state,ledger.snapshot())
     assert state['prev_sig']['AAPL']==0
     assert not ledger.prepare_entry('AAPL',10,100,TIME)[1]
@@ -346,6 +350,6 @@ def test_terminal_rejection_resets_signal_but_keeps_durable_intent(ledger):
 
 def test_daily_cap_recovers_prepared_intent_count_after_missing_state_save(ledger):
     intent=prepare(ledger)
-    state=dict(last_reset_date=intent['created_at'][:10],daily_order_count=0)
+    state: dict[str, Any] = dict(last_reset_date=intent['created_at'][:10],daily_order_count=0)
     apply_execution_state(state,ledger.snapshot())
     assert state['daily_order_count']==1

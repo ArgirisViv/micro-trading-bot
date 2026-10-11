@@ -1,8 +1,7 @@
 # data/live_data_fetch.py
 
 import pandas as pd
-import time
-from config import TIMEFRAME, LOOKBACK, USE_MOCK_DATA
+from config import TIMEFRAME, LOOKBACK
 from .hybrid_fetch import get_hybrid_data  # Real data fetching restored
 
 # Rate limiting χειρίζεται από τα επιμέρους fetchers
