@@ -156,5 +156,5 @@ def test_static_app_and_history_fallback(client):
 
     assert root.status_code == 200
     assert fallback.status_code == 200
-    assert b"Portfolio workspace" in root.data
+    assert b"Aether AI" in root.data
     assert b'AETHER AI TERMINAL' in root.data
